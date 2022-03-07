@@ -91,6 +91,9 @@ setuptools.setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
 
         # Operating Systems on which it runs
         'Operating System :: OS Independent',
@@ -109,7 +112,7 @@ setuptools.setup(
     # project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    # install_requires=['six'],
+    install_requires=['python-binance', 'pandas'],
 
     # List additional groups of dependencies here
     # (e.g. development dependencies).

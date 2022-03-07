@@ -204,10 +204,14 @@ def date2num(dt, tz=None):
     Convert :mod:`datetime` to the Gregorian date as UTC float days,
     preserving hours, minutes, seconds and microseconds.  Return value
     is a :func:`float`.
+    1. 先給日期切換好時區
+    2. 將日期中的數字部分轉換到標準時間，因為 toordinal 函數與時區無關
+    3. 日期部分通過 toordinal 函數實現，時分秒等通過算術運算即可獲得，最後相加即可
     """
     if tz is not None:
         dt = tz.localize(dt)
 
+    # 因為下文中的 toordinal 函數與時區無關，所以這裡時間上要切換到 UTC 時間
     if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
         delta = dt.tzinfo.utcoffset(dt)
         if delta is not None:

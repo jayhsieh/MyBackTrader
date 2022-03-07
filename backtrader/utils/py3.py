@@ -121,13 +121,16 @@ else:
 
 
 # This is from Armin Ronacher from Flash simplified later by six
+# 偽元類: 不是元類，但是實現元類的功能
 def with_metaclass(meta, *bases):
     """Create a base class with a metaclass."""
     # This requires a bit of explanation: the basic idea is to make a dummy
     # metaclass for one level of class instantiation that replaces itself with
     # the actual metaclass.
     class metaclass(meta):
-
+        # __new__ 函數中運行代碼 MetaParams(name, bases, dict) 來生成 cerebro
+        # 而 MetaParams 繼承父類 MetaBase
         def __new__(cls, name, this_bases, d):
             return meta(name, bases, d)
+    # 輸出以 metaclass 為類型的類，暫時命名為 return_class
     return type.__new__(metaclass, str('temporary_class'), (), {})

@@ -1,0 +1,22 @@
+@startuml
+'https://plantuml.com/class-diagram
+
+class Cerebro
+note left: <color:red>cerebro.py (default: BackBroker)</color>
+
+class BackBroker
+class BrokerBase
+class MetaBroker
+class BackBroker
+note left: <color:red>bbroker.py (only use in backtesting)</color>
+
+BrokerBase <|-- BackBroker
+MetaBroker <|-- BrokerBase
+MetaParams <|-- MetaBroker
+BrokerBase <|-- BinanceBroker
+MetaBase <|-- MetaParams
+type <|-- MetaBase
+BackBroker <-- Cerebro
+
+
+@enduml

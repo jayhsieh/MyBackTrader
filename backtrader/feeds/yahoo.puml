@@ -1,0 +1,435 @@
+@startuml
+'https://plantuml.com/class-diagram
+left to right direction
+
+object <|-- LineRoot
+LineRoot <|-- LineMultiple
+LineMultiple <|-- LineSeries
+LineSeries <|-- DataSeries
+DataSeries <|-- OHLC
+OHLC <|-- OHLCDateTime
+OHLCDateTime <|-- AbstractDataBase
+AbstractDataBase <|-- DataBase
+DataBase <|-- CSVDataBase
+CSVDataBase <|-- YahooFinanceCSVData
+
+class YahooFinanceCSVData {
+    lines
+    <color:blue>(override) params</color>
+    <color:blue>(override) start(self)</color>
+    _loadline(self, linetokens)
+}
+note bottom: <color:red>feeds/yahoo.py</color>
+
+class CSVDataBase {
+    f
+    params
+    start(self)
+    stop(self)
+    preload(self)
+    _load(self)
+    _getnextline(self)
+}
+note bottom: <color:red>feed.py (處理CSV數據下載相關內容)</color>
+
+class DataBase
+note bottom: <color:red>feed.py</color>
+
+abstract class AbstractDataBase {
+    params
+    _NOTIFNAMES
+    _compensate
+    _feed
+    _store
+    _clone
+    _qcheck
+    _tmoffset
+    resampling
+    replaying
+    _started
+    [static] _getstatusname(cls, status)
+    _start_finish(self)
+    _start(self)
+    _timeoffset(self)
+    _getnexteos(self)
+    _gettzinput(self)
+    _gettz(self)
+    date2num(self, dt)
+    num2date(self, dt=None, tz=None, naive=True)
+    haslivedata(self)
+    do_qcheck(self, onoff, qlapse)
+    islive(self)
+    put_notification(self, status, *args, **kwargs)
+    get_notifications(self)
+    getfeed(self)
+    qbuffer(self, savemem=0, replaying=False)
+    start(self)
+    stop(self)
+    clone(self, **kwargs)
+    copyas(self, _dataname, **kwargs)
+    setenvironment(self, env)
+    getenvironment(self)
+    addfilter_simple(self, f, *args, **kwargs)
+    addfilter(self, p, *args, **kwargs)
+    compensate(self, other)
+    _tick_nullify(self)
+    _tick_fill(self, force=False)
+    advance_peek(self)
+    advance(self, size=1, datamaster=None, ticks=True)
+    next(self, datamaster=None, ticks=True)
+    preload(self)
+    _last(self, datamaster=None)
+    _check(self, forcedata=None)
+    load(self)
+    _load(self)
+    _add2stack(self, bar, stash=False)
+    _save2stack(self, erase=False, force=False, stash=False)
+    _updatebar(self, bar, forward=False, ago=0)
+    _fromstack(self, forward=False, stash=False)
+    resample(self, **kwargs)
+    replay(self, **kwargs)
+}
+note bottom: <color:red>feed.py (處理實現相關參數: 時間、日期、時區，開始處裡下載數據相關內容)</color>
+
+class OHLCDateTime {
+    <color:blue>(override) lines</color>
+}
+note top: <color:red>dataseries.py  (類屬性lines中添加時間線)</color>
+
+class OHLC {
+    lines
+}
+note bottom: <color:red>dataseries.py (類屬性lines中添加數據線)</color>
+
+class DataSeries {
+    <color:blue>(override) plotinfo</color>
+    _name
+    _compression
+    _timeframe
+    LineOrder
+    getwriterheaders(self)
+    getwritervalues(self)
+    getwriterinfo(self)
+}
+note bottom: <color:red>dataseries.py (開始處理具體數值data)</color>
+
+class LineSeries {
+    plotinfo
+    csv
+    [property] array(self)
+    __getattr__(self, name)
+    __len__(self)
+    __getitem__(self, key)
+    __setitem__(self, key, value)
+    <color:red>__init__(self, *args, **kwargs)</color>
+    plotlabel(self)
+    _plotlabel(self)
+    _getline(self, line, minusall=False)
+    <color:red>__call__(self, ago=None, line=-1)</color>
+    forward(self, value=NAN, size=1)
+    backwards(self, size=1, force=False)
+    rewind(self, size=1)
+    extend(self, value=NAN, size=0)
+    reset(self)
+    home(self)
+    advance(self, size=1)
+}
+note bottom: <color:red>lineseries.py (通過Lines類，實現對數據的查改統計功能)</color>
+
+class LineMultiple {
+    reset(self)
+    <color:blue>(override) _stage1(self)</color>
+    <color:blue>(override) _stage2(self)</color>
+    <color:blue>(override) addminperiod(self, minperiod)</color>
+    <color:blue>(override) incminperiod(self, minperiod)</color>
+    <color:blue>(override) _makeoperation(self, other, operation, r=False, _ownerskip=None)</color>
+    <color:blue>(override) _makeoperationown(self, operation, _ownerskip=None)</color>
+    <color:blue>(override) qbuffer(self, savemem=0)</color>
+    <color:blue>(override) minbuffer(self, size)</color>
+}
+note bottom: <color:red>lineroot.py (多條數據線集合)</color>
+
+class LineRoot {
+    _OwnerCls
+    _minperiod
+    _opstage
+    IndType
+    StratType
+    ObsType
+    _bool_
+    _hash_
+    _stage1(self)
+    _stage2(self)
+    _operation(self, other, operation, r=False, intify=False)
+    _operationown(self, operation)
+    qbuffer(self, savemem=0)
+    minbuffer(self, size)
+    setminperiod(self, minperiod)
+    updateminperiod(self, minperiod)
+    addminperiod(self, minperiod)
+    incminperiod(self, minperiod)
+    prenext(self)
+    nextstart(self)
+    next(self)
+    preonce(self, start, end)
+    oncestart(self, start, end)
+    once(self, start, end)
+    _makeoperation(self, other, operation, r=False, _ownerskip=None)
+    _makeoperationown(self, operation, _ownerskip=None)
+    _operationown_stage1(self, operation)
+    _roperation(self, other, operation, intify=False)
+    _operation_stage1(self, other, operation, r=False, intify=False)
+    _operation_stage2(self, other, operation, r=False)
+    _operationown_stage2(self, operation)
+    __add__(self, other)
+    __radd__(self, other)
+    __sub__(self, other)
+    __rsub__(self, other)
+    __mul__(self, other)
+    __rmul__(self, other)
+    __div__(self, other)
+    __rdiv__(self, other)
+    __floordiv__(self, other)
+    __rfloordiv__(self, other)
+    __truediv__(self, other)
+    __rtruediv__(self, other)
+    __pow__(self, other)
+    __rpow__(self, other)
+    __abs__(self)
+    __neg__(self)
+    __lt__(self, other)
+    __gt__(self, other)
+    __le__(self, other)
+    __ge__(self, other)
+    __eq__(self, other)
+    __ne__(self, other)
+    __nonzero__(self)
+}
+note top: <color:red>lineroot.py (K線合成相關、數據運算相關)</color>
+
+class object
+
+MetaCSVDataBase <|-- CSVDataBase
+class MetaCSVDataBase {
+    dopostinit(cls, _obj, *args, **kwargs)
+}
+note bottom: <color:red>feed.py</color>
+note left of MetaCSVDataBase::dopostinit
+    _obj.p.dataname給_obj._name 賦值
+    調用父類dopostinit
+end note
+
+MetaAbstractDataBase <|-- AbstractDataBase
+class MetaAbstractDataBase {
+    _indcol
+    <color:red>__init__(cls, name, bases, dct)</color>
+    dopreinit(cls, _obj, *args, **kwargs)
+    dopostinit(cls, _obj, *args, **kwargs)
+}
+note bottom: <color:red>feed.py</color>
+note left of MetaAbstractDataBase::__init__
+    正常初始化
+    條件賦值 cls._indcol[name] = cls
+end note
+note left of MetaAbstractDataBase::dopreinit
+    賦值實例屬性 _feed, _notifs, _dataname, _name
+end note
+note left of MetaAbstractDataBase::dopostinit
+    _obj.p 中賦值屬性: _name, _compression, _timeframe
+    賦值實例屬性: _obj.p.sessionstart, _obj.p.sessionend
+    賦值實例屬性: _obj.p.fromdate, _obj.p.todate
+    賦值實例屬性: _barstack, _barstash, _filters, _ffilters
+end note
+
+class MetaLineSeries {
+    <color:red>__new__(meta, name, bases, dct)</color>
+    donew(cls, *args, **kwargs)
+}
+note bottom: <color:red>lineseries.py</color>
+note right of MetaLineSeries::__new__
+    擷取別名並創建子類添加到模塊中: alias/aliased
+    將字典中 linealias 屬性轉化為AutoInfoClass類
+    將lines屬性轉化為Lines類
+    將plotinfo/plotlines屬性轉化為AutoInfoClass類
+end note
+note right of MetaLineSeries::donew
+    更新類屬性plotinfo
+    對象繼承類屬性 lines, plotlines, lines別名
+    實例屬性line_n分別賦值
+end note
+
+class MetaLineRoot {
+    <color:blue>(override) donew(cls, *args, **kwargs)</color>
+}
+note bottom: <color:red>lineroot.py</color>
+note left of MetaLineRoot::donew
+    更新類屬性plotinfo
+    對象繼承類屬性 lines, plotlines, lines別名
+    實例屬性line_n分別賦值
+end note
+
+class MetaParams {
+    <color:red>__new__(meta, name, bases, dct)</color>
+    <color:blue>(override) donew(cls, *args, **kwargs)</color>
+}
+note bottom: <color:red>metabase.py</color>
+note left of MetaParams::__new__
+    擷取父類 packages, frompackages, param 參數
+end note
+note left of MetaParams::donew
+    在當前類所在模塊導入相關包
+    覆蓋類屬性 params
+    生成類並賦予短別稱 p
+end note
+
+class MetaBase {
+    doprenew(cls, *args, **kwargs)
+    donew(cls, *args, **kwargs)
+    dopreinit(cls, _obj, *args, **kwargs)
+    doinit(cls, _obj, *args, **kwargs)
+    dopostinit(cls, _obj, *args, **kwargs)
+    <color:red>(override) __call__(cls, *args, **kwargs)</color>
+}
+note bottom: <color:red>metabase.py</color>
+
+class Lines {
+    _getlinesbase
+    _getlines
+    _getlinesextra
+    _getlinesextrabase
+    [classmethod] _derive(cls, name, lines, extralines, otherbases, linesoverride=False, lalias=None)
+    [classmethod] _getlinealias(cls, i)
+    [classmethod] getlinealiases(cls)
+    itersize(self)
+    <color:red>__init__(self, initlines=None)</color>
+    __len__(self)
+    size(self)
+    fullsize(self)
+    extrasize(self)
+    __getitem__(self, line)
+    get(self, ago=0, size=1, line=0)
+    __setitem__(self, line, value)
+    forward(self, value=NAN, size=1)
+    backwards(self, size=1, force=False)
+    rewind(self, size=1)
+    extend(self, value=NAN, size=0)
+    reset(self)
+    home(self)
+    advance(self, size=1)
+    buflen(self, line=0)
+}
+note bottom: <color:red>lineseries.py</color>
+note right of Lines::_derive
+    創造新類並加載到模塊中
+    給新類添加 _getlinesbase._getlines 等屬性
+    給新類賦予別稱
+end note
+
+class LineAlias {
+    <color:red>__init__(self, line)</color>
+    __get__(self, obj, cls=None)
+    __set__(self, obj, value)
+}
+note top: <color:red>lineseries.py</color>
+
+class LineBuffer {
+    UnBounded
+    QBuffer
+    idx
+    bind2line
+    <color:red>__init__(self)</color>
+    get_idx(self)
+    set_idx(self, idx, force=False)
+    reset(self)
+    <color:blue>(override) qbuffer(self, savemem=0, extrasize=0)</color>
+    getindicators(self)
+    <color:blue>(override) minbuffer(self, size)</color>
+    __len__(self)
+    buflen(self)
+    __getitem__(self, ago)
+    get(self, ago=0, size=1)
+    getzeroval(self, idx=0)
+    getzero(self, idx=0, size=1)
+    __setitem__(self, ago, value)
+    set(self, value, ago=0)
+    home(self)
+    forward(self, value=NAN, size=1)
+    backwards(self, size=1, force=False)
+    rewind(self, size=1)
+    advance(self, size=1)
+    extend(self, value=NAN, size=0)
+    addbinding(self, binding)
+    plot(self, idx=0, size=None)
+    plotrange(self, start, end)
+    oncebinding(self)
+    bind2lines(self, binding=0)
+    <color:red>__call__(self, ago=None)</color>
+    <color:blue>(override) _makeoperation(self, other, operation, r=False, _ownerskip=None)</color>
+    <color:blue>(override) _makeoperationown(self, operation, _ownerskip=None)</color>
+    _settz(self, tz)
+    datetime(self, ago=0, tz=None, naive=True)
+    date(self, ago=0, tz=None, naive=True)
+    time(self, ago=0, tz=None, naive=True)
+    dt(self, ago=0)
+    tm_raw(self, ago=0)
+    tm(self, ago=0)
+    tm_lt(self, other, ago=0)
+    tm_le(self, other, ago=0)
+    tm_eq(self, other, ago=0)
+    tm_gt(self, other, ago=0)
+    tm_ge(self, other, ago=0)
+    tm2dtime(self, tm, ago=0)
+    tm2datetime(self, tm, ago=0)
+}
+note bottom: <color:red>linebuffer.py</color>
+note left of LineBuffer
+    基本設置
+    增刪改查
+    操作處裡
+    時間處裡
+end note
+
+class AutoInfoClass {
+    [classmethod] _derive(cls, name, info, otherbases, recurse=False)
+    isdefault(self, pname)
+    notdefault(self, pname)
+    _get(self, name, default=None)
+    [classmethod] _getkwargsdefault(cls)
+    [classmethod] _getkeys(cls)
+    [classmethod] _getdefaults(cls)
+    [classmethod] _getitems(cls)
+    [classmethod] _gettuple(cls)
+    _getkwargs(self, skip_=False)
+    _getvalues(self)
+    __new__(cls, *args, **kwargs)
+}
+note bottom: <color:red>metabase.py</color>
+note right of AutoInfoClass::_derive
+    有序字典 OrderedDict 保存字串
+    生成新類、按函數次數重命名，父類為AutoInfoClass
+    賦予類方法 _getpairbase, _getpairs, _getrecurse
+end note
+
+class LineSingle {
+    <color:blue>(override) addminperiod(self, minperiod)</color>
+    <color:blue>(override) incminperiod(self, minperiod)</color>
+}
+note bottom: <color:red>lineroot.py</color>
+
+object <|-- type
+type <|-- MetaBase
+LineRoot <|-- LineSingle
+LineSingle <|-- LineBuffer
+AutoInfoClass <-- MetaLineSeries::__new__
+AutoInfoClass <-- MetaParams::__new__
+object <|-- AutoInfoClass
+LineBuffer <-- Lines
+object <|-- Lines
+Lines <-- MetaLineSeries::__new__
+object <|-- LineAlias
+LineAlias <-- Lines
+MetaBase <|-- MetaParams
+MetaParams <|-- MetaLineRoot
+MetaLineRoot <|-- LineRoot
+MetaLineSeries <|-- LineSeries
+@enduml

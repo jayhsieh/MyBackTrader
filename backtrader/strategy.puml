@@ -1,0 +1,55 @@
+@startuml
+'https://plantuml.com/class-diagram
+
+class Strategy
+note left: <color:red>strategy.py</color>
+
+class StrategyBase
+note left: <color:red>lineiterator.py</color>
+
+class DataAccessor
+note left: <color:red>lineiterator.py</color>
+
+class LineIterator
+note left: <color:red>lineiterator.py</color>
+
+class LineSeries
+note left: <color:red>lineseries.py</color>
+
+class LineMultiple
+note left: <color:red>lineroot.py</color>
+
+class LineRoot
+note left: <color:red>lineroot.py</color>
+
+class object
+
+object <|-- LineRoot
+LineRoot <|-- LineMultiple
+LineMultiple <|-- LineSeries
+LineSeries <|-- LineIterator
+LineIterator <|-- DataAccessor
+DataAccessor <|-- StrategyBase
+StrategyBase <|-- Strategy
+
+class MetaStrategy
+MetaStrategy <|-- Strategy
+
+class MetaLineIterator
+MetaLineIterator <|-- LineIterator
+
+class MetaLineSeries
+MetaLineSeries <|-- LineSeries
+
+class MetaLineRoot
+MetaLineRoot <|-- LineRoot
+
+class MetaParams
+MetaParams <|-- MetaLineRoot
+
+class MetaBase
+MetaBase <|-- MetaParams
+type <|-- MetaBase
+
+
+@enduml
