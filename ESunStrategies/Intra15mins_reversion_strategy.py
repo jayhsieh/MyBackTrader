@@ -1,18 +1,15 @@
 import math
 import os
 import sys
-import time
 import datetime
 import pandas as pd
 import quantstats
+import configparser
 import backtrader as bt
 
 from backtrader.utils.db_conn import MyPostgres
 from backtrader_plotting import Bokeh
 from backtrader_plotting.schemes import Tradimo
-
-
-# from backtrader.binancetest.db_conn import MySqlite
 
 
 class Intra15MinutesReverseStrategy(bt.Strategy):
@@ -94,8 +91,10 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
 def get_data_df(table_name):
     myDB = MyPostgres('172.27.110.247', '5433', 'FX_Market')
+    freq_data = freq.replace('_', '').replace('m', 'min')
     get_data = f"SELECT date + time, open, high, low, close FROM {table_name} " \
-               + f"WHERE ccys = 'AUDUSD' AND freq = '5min' ORDER BY date, time"
+               + f"WHERE ccys = '{target}' AND freq = '{freq_data}' AND data_source='Histdata' " \
+               + f"ORDER BY date, time"
     rows = myDB.get_data(get_data)
     myDB.disconnect()
 
@@ -112,42 +111,56 @@ def get_data_df(table_name):
     return data
 
 
+slippage_dict = {'USDMXN': 0.001, 'USDZAR': 0.001, 'USDSEK': 0.001, 'USDSGD': 0.005}
+
 if __name__ == '__main__':
-    target = 'AUDUSD'
+    target = 'USDZAR'
     cerebro = bt.Cerebro()
     start_date = datetime.datetime(2020, 1, 1)
-    end_date = datetime.datetime(2021, 1, 1)
+    end_date = datetime.datetime(2021, 9, 1)
+
     # freq = '_5m'
     freq = '_15m'
     # freq = '_1h'
+
+    # read settings.ini
+    config = configparser.ConfigParser()
+    config.read('settings.ini')
+
+    if target in config['slippage_dict']:
+        slippage = config['slippage_dict'][target]
+    else:
+        slippage = 0.0002
+
     cerebro.adddata(get_data_df('fx_hourly_data'), name=target + freq)
     cerebro.addstrategy(Intra15MinutesReverseStrategy)
 
     cerebro.broker.setcash(10000.0)
     cerebro.addsizer(bt.sizers.FixedSize, stake=10000)
-    cerebro.broker.set_slippage_fixed(fixed=0.0002)
+    cerebro.broker.set_slippage_fixed(fixed=slippage)
     # cerebro.broker.setcommission(commission=0.001)  # 0.1%
 
     # 策略分析模塊
-    # cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
-    # cerebro.addanalyzer(bt.analyzers.TradeAnalyzer)
-    # cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='pnl')  # 返回收益率時序數據
-    # cerebro.addanalyzer(bt.analyzers.AnnualReturn, _name='_AnnualReturn')  # 年化收益率
-    # cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='_SharpeRatio')  # 夏普比率
-    # cerebro.addanalyzer(bt.analyzers.DrawDown, _name='_DrawDown')  # 回撤
+    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
+    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer)
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='pnl')  # 返回收益率時序數據
+    cerebro.addanalyzer(bt.analyzers.AnnualReturn, _name='_AnnualReturn')  # 年化收益率
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='_SharpeRatio')  # 夏普比率
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='_DrawDown')  # 回撤
     # 觀察器模塊
-    # cerebro.addobserver(bt.observers.Value)
-    # cerebro.addobserver(bt.observers.DrawDown)
-    # cerebro.addobserver(bt.observers.Trades)
+    cerebro.addobserver(bt.observers.Value)
+    cerebro.addobserver(bt.observers.DrawDown)
+    cerebro.addobserver(bt.observers.Trades)
 
     results = cerebro.run(stdstats=True)
     strat = results[0]
-    # portfolio_stats = strat.analyzers.getbyname('pyfolio')
-    # returns, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
-    # returns.index = returns.index.tz_convert(None)
-    # file_name = target + freq + '_reversion.html'
-    # quantstats.reports.html(returns, output=os.path.join(__file__, '../', file_name), title=target)
+    portfolio_stats = strat.analyzers.getbyname('pyfolio')
+    returns, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
+    returns.index = returns.index.tz_convert(None)
+    file_name = target + freq + '_reversion.html'
+    quantstats.reports.html(returns, output=os.path.join(__file__, '../output/', file_name), title=target)
 
-    b = Bokeh(style='bar', scheme=Tradimo())
+    b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq + '.html')
+    b.params.filename = './output/' + target + freq + '.html'
     cerebro.plot(b)
     sys.exit(0)
