@@ -1,7 +1,7 @@
 MyBackTrader
 ==========
 
-1. This version is extended from the original backtrader `mementum/backtrader <https://github.com/mementum/backtrader>`_.
+1. This version is extended from the original backtrader [mementum/backtrader](https://github.com/mementum/backtrader).
 2. This strategies engine or so-called back-testing engine is mainly provided for our Quant Traders. This engine communities with our low-latency intelligent order router, 
    which is responsible for taking care of all streaming ticks from APIs.
 3. We will add some core features which are listed below.
