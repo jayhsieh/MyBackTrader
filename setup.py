@@ -93,7 +93,8 @@ setuptools.setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
+        # 'Programming Language :: Python :: 3.10',
+        # 3.10 will cause [dtype = numeric.dtype(dtype)] type error 'nonetype' object is not callable
 
         # Operating Systems on which it runs
         'Operating System :: OS Independent',

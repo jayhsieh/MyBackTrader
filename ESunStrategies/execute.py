@@ -29,10 +29,10 @@ class MySizer(bt.Sizer):
 
 
 def get_data_df(table_name, target, freq_data, start, end):
-    myDB = MyPostgres('172.27.110.247', '5433', 'FX_Market')
+    myDB = MyPostgres()
     freq_data = freq_data.replace('_', '').replace('m', 'min')
-    get_data = f"SELECT date + time, open, high, low, close FROM {table_name} " \
-               + f"WHERE ccys = '{target}' AND freq = '{freq_data}' AND data_source='Histdata' " \
+    get_data = '''SELECT date + time, open, high, low, close FROM ''' + '\"' + table_name + "\" "  \
+               + f"WHERE freq = '{freq_data}' AND broker='Histdata' " \
                + f"ORDER BY date, time"
     rows = myDB.get_data(get_data)
     myDB.disconnect()
@@ -57,9 +57,9 @@ def get_settings4tag(target, tag):
     """
     config = read_config()
     if target in config[tag]:
-        return config[tag][target]
+        return float(config[tag][target])
     else:
-        return config[tag][tag + '_basic']
+        return float(config[tag][tag + '_basic'])
 
 
 def read_config():
@@ -70,16 +70,8 @@ def read_config():
 
 def execute(target, freq_data, start, end):
     cerebro = bt.Cerebro()
-    config = read_config()
-
     slippage = get_settings4tag(target, 'slippage')
-
-    if target in config['slippage']:
-        slippage = config['slippage'][target]
-    else:
-        slippage = 0.0002
-
-    data = get_data_df('fx_hourly_data', target, freq_data, start, end)
+    data = get_data_df(target + '_OHLC', target, freq_data, start, end)
 
     cerebro.adddata(data, name=target + freq_data)
     cerebro.addstrategy(Intra15MinutesReverseStrategy)
@@ -109,7 +101,7 @@ def execute(target, freq_data, start, end):
     exe_ret.index = exe_ret.index.tz_convert(None)
 
     b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq + '.html')
-    b.params.filename = './output/' + target + freq + '.html'
+    b.params.filename = './output/' + target + freq + '_figure.html'
     cerebro.plot(b)
 
     return exe_ret, exe_pos
@@ -146,8 +138,8 @@ def single_strategy(target, freq_data, start, end):
     title = target
     returns, positions = execute(target, freq_data, start, end)
 
-    file_name = target + freq_data + '_reversion.html'
-    quantstats.reports.html(returns, output=os.path.join(__file__, '../output/', file_name), title=title)
+    file_name = target + freq_data + '_reversion_performance_report.html'
+    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
 
 def multiple_strategy(targets, freq_data, start, end):
@@ -186,7 +178,7 @@ def multiple_strategy(targets, freq_data, start, end):
 
 
 if __name__ == '__main__':
-    start_date = datetime.datetime(2020, 1, 1)
+    start_date = datetime.datetime(2020, 4, 1)
     end_date = datetime.datetime(2021, 9, 1)
 
     freq = '_15m'

@@ -3,7 +3,7 @@ import sqlite3
 
 
 class MyPostgres:
-    def __init__(self, host, port, database):
+    def __init__(self, host='localhost', port='5432', database='postgres'):
         # progreSQL
         self.conn = psycopg2.connect(database=database, user='Quant', password='Quant', host=host, port=port)
         self.cur = self.conn.cursor()
