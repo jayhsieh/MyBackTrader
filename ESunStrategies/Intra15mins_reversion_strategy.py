@@ -6,10 +6,10 @@ import pandas as pd
 import quantstats
 import configparser
 import backtrader as bt
+import numpy as np
 
 from backtrader.utils.db_conn import MyPostgres
-from backtrader_plotting import Bokeh
-from backtrader_plotting.schemes import Tradimo
+from scipy import optimize
 
 
 class Intra15MinutesReverseStrategy(bt.Strategy):
@@ -89,9 +89,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         self.log('===========================================================================', doprint=True)
 
 
-def get_data_df(table_name):
+def get_data_df(table_name, target, freq_data, start, end):
     myDB = MyPostgres('172.27.110.247', '5433', 'FX_Market')
-    freq_data = freq.replace('_', '').replace('m', 'min')
+    freq_data = freq_data.replace('_', '').replace('m', 'min')
     get_data = f"SELECT date + time, open, high, low, close FROM {table_name} " \
                + f"WHERE ccys = '{target}' AND freq = '{freq_data}' AND data_source='Histdata' " \
                + f"ORDER BY date, time"
@@ -111,28 +111,24 @@ def get_data_df(table_name):
     return data
 
 
-slippage_dict = {'USDMXN': 0.001, 'USDZAR': 0.001, 'USDSEK': 0.001, 'USDSGD': 0.005}
-
-if __name__ == '__main__':
-    target = 'USDZAR'
-    cerebro = bt.Cerebro()
-    start_date = datetime.datetime(2020, 1, 1)
-    end_date = datetime.datetime(2021, 9, 1)
-
-    # freq = '_5m'
-    freq = '_15m'
-    # freq = '_1h'
-
-    # read settings.ini
+def read_config():
     config = configparser.ConfigParser()
     config.read('settings.ini')
+    return config
+
+
+def execute(target, freq_data, start, end):
+    cerebro = bt.Cerebro()
+    config = read_config()
 
     if target in config['slippage_dict']:
         slippage = config['slippage_dict'][target]
     else:
         slippage = 0.0002
 
-    cerebro.adddata(get_data_df('fx_hourly_data'), name=target + freq)
+    data = get_data_df('fx_hourly_data', target, freq_data, start, end)
+
+    cerebro.adddata(data, name=target + freq_data)
     cerebro.addstrategy(Intra15MinutesReverseStrategy)
 
     cerebro.broker.setcash(10000.0)
@@ -155,12 +151,84 @@ if __name__ == '__main__':
     results = cerebro.run(stdstats=True)
     strat = results[0]
     portfolio_stats = strat.analyzers.getbyname('pyfolio')
-    returns, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
-    returns.index = returns.index.tz_convert(None)
-    file_name = target + freq + '_reversion.html'
-    quantstats.reports.html(returns, output=os.path.join(__file__, '../output/', file_name), title=target)
+    exe_ret, exe_pos, transactions, gross_lev = portfolio_stats.get_pf_items()
+    exe_ret.index = exe_ret.index.tz_convert(None)
 
-    b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq + '.html')
-    b.params.filename = './output/' + target + freq + '.html'
-    cerebro.plot(b)
+    # b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq + '.html')
+    # b.params.filename = './output/' + target + freq + '.html'
+    # cerebro.plot(b)
+
+    return exe_ret, exe_pos
+
+
+def maximize_sharpe_ratio(mean, cov):
+    def target(x):
+        denomr = np.sqrt(np.matmul(np.matmul(x, cov), x.T))
+        numer = np.matmul(np.array(mean), x.T)
+        func = -(numer / denomr)
+        return func
+
+    def constraint(x):
+        a = np.ones(x.shape)
+        b = 1
+        const = np.matmul(a, x.T) - b
+        return const
+
+    # define bounds and other parameters
+    xinit = np.repeat(1. / len(mean), len(mean))
+    cons = ({'type': 'eq', 'fun': constraint})
+    lb = 0
+    ub = 1
+    bnds = tuple([(lb, ub) for x in xinit])
+
+    # invoke minimize solver
+    opt = optimize.minimize(target, x0=xinit, method='SLSQP',
+                            bounds=bnds, constraints=cons, tol=10 ** -3)
+
+    return opt
+
+
+def multiple_strategy(targets, freq_data, start, end):
+    title = ''
+    for t in targets:
+        if len(title) == 0:
+            title += t
+        else:
+            title += ' + ' + t
+
+    config = read_config()
+
+    positions = pd.DataFrame(columns=targets)
+    position = pd.DataFrame()
+    for t in targets:
+        _, pos = execute(t, freq_data, start, end)
+        positions[t] = pos.sum(axis=1)
+        if len(position) == 0:
+            position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
+        else:
+            position['cash'] += round(positions[t] * config['portfolio_weight'][t], 2)
+
+    returns = position.pct_change()
+    returns['cash'][0] = 0
+    returns.index = [x.to_datetime64() for x in returns.index]
+
+    file_name = '3CCY' + freq_data + '_reversion.html'
+    quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
+
+    date_diff = pd.DataFrame(positions.index).diff()
+    date_diff['Datetime'] /= np.timedelta64(1, 'D')
+
+    pos_mean = positions.mean()
+    pos_cov = positions.cov()
+    pos_weight = maximize_sharpe_ratio(pos_mean, pos_cov)
+
+
+if __name__ == '__main__':
+    targets = ['USDZAR', 'GBPUSD', 'USDMXN']
+    start_date = datetime.datetime(2020, 1, 1)
+    end_date = datetime.datetime(2021, 8, 1)
+
+    freq = '_15m'
+
+    multiple_strategy(targets, freq, start_date, end_date)
     sys.exit(0)
