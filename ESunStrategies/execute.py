@@ -7,6 +7,7 @@ import quantstats
 import configparser
 import backtrader as bt
 import numpy as np
+from scipy import stats
 
 # from Intra15mins_reversion_strategy import Intra15MinutesReverseStrategy
 from multipleTimeframes import Intra15MinutesReverseStrategy
@@ -110,22 +111,45 @@ def execute(target, freq_data, partial_name, start, end):
     # b.params.filename = './output/' + target + partial_name + '_figure.html'
     # cerebro.plot(b)
 
-    payoff = list()
-    payoff_positive = list()
-    payoff_negative = list()
-    for i in range(len(transactions)):
+    analyze_transaction(transactions)
+
+    return exe_ret, exe_pos
+
+
+def analyze_transaction(trans):
+    # classify data
+    payoff = [[], [], [], [], []]
+    for i in range(len(trans)):
         if not i % 2:
             continue
 
-        p = transactions['value'][i] + transactions['value'][i - 1]
-        payoff.append(p)
+        p = trans['value'][i] + trans['value'][i - 1]
+        payoff[0].append(p)  # all
 
         if p > 0:
-            payoff_positive.append(p)
+            payoff[1].append(p)  # positive
         else:
-            payoff_negative.append(p)
+            payoff[2].append(p)  # negative
 
-    return exe_ret, exe_pos
+        if trans.index[i].minute % 15 == 1:
+            payoff[4].append(p)  # clean
+        else:
+            payoff[3].append(p)  # strategy
+
+    # statistics
+    col = ['All', 'Positive', 'Negative', 'Strategy', 'Clean']
+    summary = pd.DataFrame(columns=col,
+                           index=['mean', 'std', 'count', 'pvalue'])
+    for i in range(len(payoff)):
+        summary[col[i]]['mean'] = np.mean(payoff[i])
+        summary[col[i]]['std'] = np.std(payoff[i])
+        summary[col[i]]['count'] = len(payoff[i])
+        if col[i] == 'Negative':
+            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff[i], 0, alternative='less').pvalue
+        else:
+            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff[i], 0, alternative='greater').pvalue
+
+    print(summary)
 
 
 def single_strategy(target, freq_data, partial_name, start, end):
@@ -148,6 +172,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     positions = pd.DataFrame(columns=targets)
     position = pd.DataFrame()
     for t in targets:
+        print(t)
         _, pos = execute(t, freq_data, start, end)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
@@ -182,7 +207,7 @@ if __name__ == '__main__':
     # for ccy_target in ccy_targets:
     #     single_strategy(ccy_target, freq, start_date, end_date)
 
-    ccy_target = 'USDJPY'
+    ccy_target = 'USDZAR'
     single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
 
     sys.exit(0)

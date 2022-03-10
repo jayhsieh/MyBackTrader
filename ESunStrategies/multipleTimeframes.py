@@ -1,6 +1,7 @@
 import math
 import datetime
 import backtrader as bt
+import configparser
 
 
 class Intra15MinutesReverseStrategy(bt.Strategy):
@@ -12,11 +13,21 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         self.order_buy_close = list()
         self.order_sell_close = list()
         self.order_close = list()
+        self.factor = 100000 * self.get_factor(self.data1._name.split('_')[0])
 
     def log(self, txt, dt=None, doprint=False):
         if doprint:
             dt = dt or self.datas[0].datetime.datetime(0)
             print('%s, %s' % (dt.isoformat(), txt))
+
+    @staticmethod
+    def get_factor(target):
+        config = configparser.ConfigParser()
+        config.read('settings.ini')
+        if target in config['factor']:
+            return float(config['factor'][target])
+        else:
+            return 1
 
     def notify_order(self, order):
         if order.status in [order.Accepted]:
@@ -39,7 +50,19 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             self.log("Order Canceled: 訂單編號: {}, 限價價格: {}".format(order.ref, order.plimit), doprint=True)
 
     def next(self):
-        if self.data0.datetime.datetime(0).minute % 15:
+        if self.data0.datetime.datetime(0).minute % 15 == 10:
+            # For the last 5 min, create close order for outstanding position
+            position_size = self.getposition().size
+            valid2 = datetime.timedelta(minutes=5)
+
+            if position_size > 0:
+                self.order_buy_close = self.sell(exectype=bt.Order.StopLimit, plimit=self.order_buy_close.plimit,
+                                                 valid=valid2, size=abs(position_size))
+            elif position_size < 0:
+                self.order_sell_close = self.buy(exectype=bt.Order.StopLimit, plimit=self.order_sell_close.plimit,
+                                                 valid=valid2, size=abs(position_size))
+            return
+        elif self.data0.datetime.datetime(0).minute % 15:
             return
 
         # print_str = 'Open: {}, High: {}, Low: {}, Close: {}, ATR: {:5f}, index: {} '.format(
@@ -47,7 +70,6 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         # self.log(print_str, doprint=True)  # for debug
 
         valid1 = datetime.timedelta(minutes=10)
-        multiplier = 100000
         trigger_param = 2
         limit_param = 5
 
@@ -58,9 +80,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
             # 賺取向下偏離過多的reversion
             buy_trigger_price = math.floor(
-                (self.data1.low[-1] - trigger_param * self.atr[-1]) * multiplier) / multiplier
+                (self.data1.low[-1] - trigger_param * self.atr[-1]) * self.factor) / self.factor
             buy_limit_price = math.ceil(
-                (self.data1.low[-1] - limit_param * self.atr[-1]) * multiplier) / multiplier
+                (self.data1.low[-1] - limit_param * self.atr[-1]) * self.factor) / self.factor
 
             self.order_buy = self.buy(exectype=bt.Order.StopLimit, price=buy_trigger_price,
                                       plimit=buy_limit_price, valid=valid1)
@@ -69,9 +91,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
             # 賺取向上偏離過多的reversion
             sell_trigger_price = math.ceil(
-                (self.data1.high[-1] + trigger_param * self.atr[-1]) * multiplier) / multiplier
+                (self.data1.high[-1] + trigger_param * self.atr[-1]) * self.factor) / self.factor
             sell_limit_price = math.floor(
-                (self.data1.high[-1] + limit_param * self.atr[-1]) * multiplier) / multiplier
+                (self.data1.high[-1] + limit_param * self.atr[-1]) * self.factor) / self.factor
             self.order_sell = self.sell(exectype=bt.Order.StopLimit, price=sell_trigger_price,
                                         plimit=sell_limit_price, valid=valid1)
             self.order_sell_close = self.buy(exectype=bt.Order.StopLimit, price=sell_limit_price,
@@ -79,8 +101,14 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         else:
             position_size = self.getposition().size
             if position_size != 0:
-                self.log("Close position on next open market price", doprint=True)
-                self.order_close = self.close()
+                if position_size > 0:
+                    self.log(
+                        "Did not touch buy trigger price: {}".format(self.order_buy_close.plimit),
+                        doprint=True)
+                elif position_size < 0:
+                    self.log(
+                        "Did not touch sell trigger price: {}".format(self.order_sell_close.plimit),
+                        doprint=True)
 
     def notify_trade(self, trade):
         if not trade.isclosed:
