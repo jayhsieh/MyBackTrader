@@ -14,7 +14,6 @@ from multipleTimeframes import Intra15MinutesReverseStrategy
 from backtrader.utils.db_conn import MyPostgres
 from backtrader_plotting import Bokeh
 from backtrader_plotting.schemes import Tradimo
-from scipy import optimize
 
 
 class MySizer(bt.Sizer):
@@ -74,13 +73,13 @@ def execute(target, freq_data, partial_name, start, end):
     slippage = get_settings4tag(target, 'slippage')
 
     if len(freq_data) == 1:
-        data = get_data_df(target + '_OHLC', target, freq_data[i], start, end)
-        cerebro.adddata(data, name=target + freq_data[i])
+        data = get_data_df(target + '_OHLC', target, freq_data[0], start, end)
+        cerebro.adddata(data, name=target + freq_data[0])
     elif len(freq_data) == 2:
-        data1 = get_data_df(target + '_OHLC', target, freq_data[i], start, end)
-        cerebro.adddata(data1, name=target + freq_data[i])
-        data2 = get_data_df(target + '_OHLC', target, freq_data[i], start, end)
-        cerebro.adddata(data2, name=target + freq_data[i])
+        data1 = get_data_df(target + '_OHLC', target, freq_data[0], start, end)
+        cerebro.adddata(data1, name=target + freq_data[0])
+        data2 = get_data_df(target + '_OHLC', target, freq_data[1], start, end)
+        cerebro.adddata(data2, name=target + freq_data[1])
 
     cerebro.addstrategy(Intra15MinutesReverseStrategy)
     cerebro.broker.setcash(10000.0)
@@ -107,38 +106,26 @@ def execute(target, freq_data, partial_name, start, end):
     exe_ret, exe_pos, transactions, gross_lev = portfolio_stats.get_pf_items()
     exe_ret.index = exe_ret.index.tz_convert(None)
 
-    b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + partial_name + '.html')
-    b.params.filename = './output/' + target + partial_name + '_figure.html'
-    cerebro.plot(b)
+    # b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + partial_name + '.html')
+    # b.params.filename = './output/' + target + partial_name + '_figure.html'
+    # cerebro.plot(b)
+
+    payoff = list()
+    payoff_positive = list()
+    payoff_negative = list()
+    for i in range(len(transactions)):
+        if not i % 2:
+            continue
+
+        p = transactions['value'][i] + transactions['value'][i - 1]
+        payoff.append(p)
+
+        if p > 0:
+            payoff_positive.append(p)
+        else:
+            payoff_negative.append(p)
 
     return exe_ret, exe_pos
-
-
-def maximize_sharpe_ratio(mean, cov):
-    def target(x):
-        denomr = np.sqrt(np.matmul(np.matmul(x, cov), x.T))
-        numer = np.matmul(np.array(mean), x.T)
-        func = -(numer / denomr)
-        return func
-
-    def constraint(x):
-        a = np.ones(x.shape)
-        b = 1
-        const = np.matmul(a, x.T) - b
-        return const
-
-    # define bounds and other parameters
-    xinit = np.repeat(1. / len(mean), len(mean))
-    cons = ({'type': 'eq', 'fun': constraint})
-    lb = 0
-    ub = 1
-    bnds = tuple([(lb, ub) for x in xinit])
-
-    # invoke minimize solver
-    opt = optimize.minimize(target, x0=xinit, method='SLSQP',
-                            bounds=bnds, constraints=cons, tol=10 ** -3)
-
-    return opt
 
 
 def single_strategy(target, freq_data, partial_name, start, end):
@@ -148,7 +135,7 @@ def single_strategy(target, freq_data, partial_name, start, end):
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
 
-def multiple_strategy(targets, freq_data, start, end):
+def multiple_strategy(targets, freq_data, partial_name, start, end):
     title = ''
     for t in targets:
         if len(title) == 0:
@@ -172,15 +159,11 @@ def multiple_strategy(targets, freq_data, start, end):
     returns['cash'][0] = 0
     returns.index = [x.to_datetime64() for x in returns.index]
 
-    file_name = '3CCY' + freq_data + '_reversion.html'
+    file_name = '3CCY' + partial_name + '_reversion_performance.html'
     quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
 
     date_diff = pd.DataFrame(positions.index).diff()
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
-
-    pos_mean = positions.mean()
-    pos_cov = positions.cov()
-    pos_weight = maximize_sharpe_ratio(pos_mean, pos_cov)
 
 
 if __name__ == '__main__':

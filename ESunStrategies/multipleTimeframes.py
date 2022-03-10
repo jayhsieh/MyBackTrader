@@ -31,12 +31,10 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
                 print('執行停損單')
             if order.isbuy():
                 self.log("買單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(order.ref, order.executed.price,
-                                                                              order.executed.comm, order.executed.size),
-                         doprint=True)
+                         order.executed.comm, order.executed.size), doprint=True)
             elif order.issell():
                 self.log("賣單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(order.ref, order.executed.price,
-                                                                              order.executed.comm, order.executed.size),
-                         doprint=True)
+                         order.executed.comm, order.executed.size), doprint=True)
         elif order.status in [order.Canceled]:
             self.log("Order Canceled: 訂單編號: {}, 限價價格: {}".format(order.ref, order.plimit), doprint=True)
 
@@ -48,16 +46,21 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         #     self.data1.open[0], self.data1.high[0], self.data1.low[0], self.data1.close[0], self.atr[0], len(self))
         # self.log(print_str, doprint=True)  # for debug
 
-        valid1 = datetime.timedelta(minutes=25)
+        valid1 = datetime.timedelta(minutes=10)
         multiplier = 100000
         trigger_param = 2
         limit_param = 5
 
         if not self.position:
+            # skip for the first atr value
+            if math.isnan(self.atr[-1]):
+                return
+
             # 賺取向下偏離過多的reversion
             buy_trigger_price = math.floor(
-                (self.data1.low[0] - trigger_param * self.atr[0]) * multiplier) / multiplier
-            buy_limit_price = math.ceil((self.data1.low[0] - limit_param * self.atr[0]) * multiplier) / multiplier
+                (self.data1.low[-1] - trigger_param * self.atr[-1]) * multiplier) / multiplier
+            buy_limit_price = math.ceil(
+                (self.data1.low[-1] - limit_param * self.atr[-1]) * multiplier) / multiplier
 
             self.order_buy = self.buy(exectype=bt.Order.StopLimit, price=buy_trigger_price,
                                       plimit=buy_limit_price, valid=valid1)
@@ -66,9 +69,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
             # 賺取向上偏離過多的reversion
             sell_trigger_price = math.ceil(
-                (self.data1.high[0] + trigger_param * self.atr[0]) * multiplier) / multiplier
+                (self.data1.high[-1] + trigger_param * self.atr[-1]) * multiplier) / multiplier
             sell_limit_price = math.floor(
-                (self.data1.high[0] + limit_param * self.atr[0]) * multiplier) / multiplier
+                (self.data1.high[-1] + limit_param * self.atr[-1]) * multiplier) / multiplier
             self.order_sell = self.sell(exectype=bt.Order.StopLimit, price=sell_trigger_price,
                                         plimit=sell_limit_price, valid=valid1)
             self.order_sell_close = self.buy(exectype=bt.Order.StopLimit, price=sell_limit_price,
