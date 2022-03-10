@@ -8,7 +8,8 @@ import configparser
 import backtrader as bt
 import numpy as np
 
-from Intra15mins_reversion_strategy import Intra15MinutesReverseStrategy
+# from Intra15mins_reversion_strategy import Intra15MinutesReverseStrategy
+from multipleTimeframes import Intra15MinutesReverseStrategy
 
 from backtrader.utils.db_conn import MyPostgres
 from backtrader_plotting import Bokeh
@@ -30,7 +31,7 @@ class MySizer(bt.Sizer):
 
 def get_data_df(table_name, target, freq_data, start, end):
     myDB = MyPostgres()
-    freq_data = freq_data.replace('_', '').replace('m', 'min')
+    freq_data = freq_data.replace('_', '').replace('m', 'min').replace('h', 'H')
     get_data = '''SELECT date + time, open, high, low, close FROM ''' + '\"' + table_name + "\" "  \
                + f"WHERE freq = '{freq_data}' AND broker='Histdata' " \
                + f"ORDER BY date, time"
@@ -45,8 +46,8 @@ def get_data_df(table_name, target, freq_data, start, end):
     if target.startswith('USD'):
         temp_df[['open', 'high', 'low', 'close']] = 1 / temp_df[['open', 'low', 'high', 'close']]
 
-    data = bt.feeds.PandasDirectData(dataname=temp_df, dtformat="%Y-%m-%d %H:%M:%S", fromdate=start_date,
-                                     todate=end_date, open=1, high=2, low=3, close=4, volume=5, openinterest=-1)
+    data = bt.feeds.PandasDirectData(dataname=temp_df, dtformat="%Y-%m-%d %H:%M:%S", fromdate=start,
+                                     todate=end, open=1, high=2, low=3, close=4, volume=5, openinterest=-1)
     return data
 
 
@@ -68,14 +69,20 @@ def read_config():
     return config
 
 
-def execute(target, freq_data, start, end):
+def execute(target, freq_data, partial_name, start, end):
     cerebro = bt.Cerebro()
     slippage = get_settings4tag(target, 'slippage')
-    data = get_data_df(target + '_OHLC', target, freq_data, start, end)
 
-    cerebro.adddata(data, name=target + freq_data)
+    if len(freq_data) == 1:
+        data = get_data_df(target + '_OHLC', target, freq_data[i], start, end)
+        cerebro.adddata(data, name=target + freq_data[i])
+    elif len(freq_data) == 2:
+        data1 = get_data_df(target + '_OHLC', target, freq_data[i], start, end)
+        cerebro.adddata(data1, name=target + freq_data[i])
+        data2 = get_data_df(target + '_OHLC', target, freq_data[i], start, end)
+        cerebro.adddata(data2, name=target + freq_data[i])
+
     cerebro.addstrategy(Intra15MinutesReverseStrategy)
-
     cerebro.broker.setcash(10000.0)
     cerebro.addsizer(MySizer)
     cerebro.addsizer(bt.sizers.FixedSize, stake=10000)
@@ -100,8 +107,8 @@ def execute(target, freq_data, start, end):
     exe_ret, exe_pos, transactions, gross_lev = portfolio_stats.get_pf_items()
     exe_ret.index = exe_ret.index.tz_convert(None)
 
-    b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq + '.html')
-    b.params.filename = './output/' + target + freq + '_figure.html'
+    b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + partial_name + '.html')
+    b.params.filename = './output/' + target + partial_name + '_figure.html'
     cerebro.plot(b)
 
     return exe_ret, exe_pos
@@ -134,11 +141,10 @@ def maximize_sharpe_ratio(mean, cov):
     return opt
 
 
-def single_strategy(target, freq_data, start, end):
+def single_strategy(target, freq_data, partial_name, start, end):
     title = target
-    returns, positions = execute(target, freq_data, start, end)
-
-    file_name = target + freq_data + '_reversion_performance_report.html'
+    returns, positions = execute(target, freq_data, partial_name, start, end)
+    file_name = target + partial_name + '_reversion_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
 
@@ -178,11 +184,13 @@ def multiple_strategy(targets, freq_data, start, end):
 
 
 if __name__ == '__main__':
-    start_date = datetime.datetime(2020, 4, 1)
+    start_date = datetime.datetime(2021, 1, 1)
     end_date = datetime.datetime(2021, 9, 1)
+    freq_list = ['_1m', '_15m']
 
-    freq = '_15m'
-
+    sub_name_str = ''
+    for i in range(0, len(freq_list)):
+        sub_name_str = sub_name_str + freq_list[i]
     # ccy_targets = ['USDZAR', 'GBPUSD', 'USDMXN']
     # multiple_strategy(ccy_targets, freq, start_date, end_date)
 
@@ -191,7 +199,7 @@ if __name__ == '__main__':
     # for ccy_target in ccy_targets:
     #     single_strategy(ccy_target, freq, start_date, end_date)
 
-    ccy_target = 'GBPUSD'
-    single_strategy(ccy_target, freq, start_date, end_date)
+    ccy_target = 'USDJPY'
+    single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
 
     sys.exit(0)
