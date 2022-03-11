@@ -1,6 +1,7 @@
 import math
 import datetime
 import backtrader as bt
+import pandas as pd
 import configparser
 
 
@@ -13,7 +14,12 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         self.order_buy_close = list()
         self.order_sell_close = list()
         self.order_close = list()
+
+        # order parameters
         self.factor = 100000 * self.get_factor(self.data1._name.split('_')[0])
+        self.trigger_param = 2
+        self.limit_param = 5
+        self.transaction = pd.DataFrame(columns=['amount', 'price', 'value', 'atr'])
 
     def log(self, txt, dt=None, doprint=False):
         if doprint:
@@ -41,11 +47,33 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             if order.exectype in [order.StopTrail, order.StopTrailLimit]:
                 print('執行停損單')
             if order.isbuy():
-                self.log("買單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(order.ref, order.executed.price,
-                         order.executed.comm, order.executed.size), doprint=True)
+                val = -order.executed.price * order.executed.size
+                tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
+                                  columns=self.transaction.columns, index=[self.data0.datetime.datetime(0)])
+                msg = "買單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(
+                    order.ref, order.executed.price, order.executed.comm, order.executed.size)
+                if order.exectype == 4:
+                    # ExecTypes 0: Market, 1: Close, 2: Limit, 3: Stop, 4: StopLimit, 5: StopTrail, 6: StopTrailLimit,
+                    # 7: Historical
+                    atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
+                    msg = msg + ", ATR: {}".format(atr)
+                    tr.loc[self.data0.datetime.datetime(0), 'atr'] = atr
+
+                self.log(msg, doprint=True)
+                self.transaction = self.transaction.append(tr)
             elif order.issell():
-                self.log("賣單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(order.ref, order.executed.price,
-                         order.executed.comm, order.executed.size), doprint=True)
+                val = -order.executed.price * order.executed.size
+                tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
+                                  columns=self.transaction.columns, index=[self.data0.datetime.datetime(0)])
+                msg = "賣單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(
+                    order.ref, order.executed.price, order.executed.comm, order.executed.size)
+                if order.exectype == 4:
+                    atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
+                    msg = msg + ", ATR: {}".format(atr)
+                    tr.loc[self.data0.datetime.datetime(0), 'atr'] = atr
+
+                self.log(msg, doprint=True)
+                self.transaction = self.transaction.append(tr)
         elif order.status in [order.Canceled]:
             self.log("Order Canceled: 訂單編號: {}, 限價價格: {}".format(order.ref, order.plimit), doprint=True)
 
@@ -56,10 +84,10 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             valid2 = datetime.timedelta(minutes=5)
 
             if position_size > 0:
-                self.order_buy_close = self.sell(exectype=bt.Order.StopLimit, plimit=self.order_buy_close.plimit,
+                self.order_buy_close = self.sell(exectype=bt.Order.Limit, price=self.order_buy_close.plimit,
                                                  valid=valid2, size=abs(position_size))
             elif position_size < 0:
-                self.order_sell_close = self.buy(exectype=bt.Order.StopLimit, plimit=self.order_sell_close.plimit,
+                self.order_sell_close = self.buy(exectype=bt.Order.Limit, price=self.order_sell_close.plimit,
                                                  valid=valid2, size=abs(position_size))
             return
         elif self.data0.datetime.datetime(0).minute % 15:
@@ -70,8 +98,6 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         # self.log(print_str, doprint=True)  # for debug
 
         valid1 = datetime.timedelta(minutes=10)
-        trigger_param = 2
-        limit_param = 5
 
         if not self.position:
             # skip for the first atr value
@@ -80,9 +106,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
             # 賺取向下偏離過多的reversion
             buy_trigger_price = math.floor(
-                (self.data1.low[-1] - trigger_param * self.atr[-1]) * self.factor) / self.factor
+                (self.data1.low[-1] - self.trigger_param * self.atr[-1]) * self.factor) / self.factor
             buy_limit_price = math.ceil(
-                (self.data1.low[-1] - limit_param * self.atr[-1]) * self.factor) / self.factor
+                (self.data1.low[-1] - self.limit_param * self.atr[-1]) * self.factor) / self.factor
 
             self.order_buy = self.buy(exectype=bt.Order.StopLimit, price=buy_trigger_price,
                                       plimit=buy_limit_price, valid=valid1)
@@ -91,9 +117,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
             # 賺取向上偏離過多的reversion
             sell_trigger_price = math.ceil(
-                (self.data1.high[-1] + trigger_param * self.atr[-1]) * self.factor) / self.factor
+                (self.data1.high[-1] + self.trigger_param * self.atr[-1]) * self.factor) / self.factor
             sell_limit_price = math.floor(
-                (self.data1.high[-1] + limit_param * self.atr[-1]) * self.factor) / self.factor
+                (self.data1.high[-1] + self.limit_param * self.atr[-1]) * self.factor) / self.factor
             self.order_sell = self.sell(exectype=bt.Order.StopLimit, price=sell_trigger_price,
                                         plimit=sell_limit_price, valid=valid1)
             self.order_sell_close = self.buy(exectype=bt.Order.StopLimit, price=sell_limit_price,

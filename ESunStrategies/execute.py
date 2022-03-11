@@ -111,7 +111,7 @@ def execute(target, freq_data, partial_name, start, end):
     # b.params.filename = './output/' + target + partial_name + '_figure.html'
     # cerebro.plot(b)
 
-    analyze_transaction(transactions)
+    analyze_transaction(strat.transaction)
 
     return exe_ret, exe_pos
 
@@ -119,12 +119,18 @@ def execute(target, freq_data, partial_name, start, end):
 def analyze_transaction(trans):
     # classify data
     payoff = [[], [], [], [], []]
+    pay = pd.DataFrame(columns=['value', 'in_price', 'out_price', 'amount', 'atr', 'is_long', 'is_win', 'is_strategy'])
     for i in range(len(trans)):
         if not i % 2:
             continue
 
         p = trans['value'][i] + trans['value'][i - 1]
         payoff[0].append(p)  # all
+
+        pa = pd.DataFrame([[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]), trans['atr'][i - 1],
+                            trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
+                          columns=pay.columns, index=[trans.index[i]])
+        pay = pay.append(pa)
 
         if p > 0:
             payoff[1].append(p)  # positive
@@ -139,11 +145,20 @@ def analyze_transaction(trans):
     # statistics
     col = ['All', 'Positive', 'Negative', 'Strategy', 'Clean']
     summary = pd.DataFrame(columns=col,
-                           index=['mean', 'std', 'count', 'pvalue'])
+                           index=['count', 'sum', 'mean', 'median', 'std', 'std_r', 'pvalue'])
     for i in range(len(payoff)):
+        cnt = len(payoff[i])
+        summary[col[i]]['count'] = cnt
+        summary[col[i]]['sum'] = sum(payoff[i])
         summary[col[i]]['mean'] = np.mean(payoff[i])
+
+        # skip for only one sample
+        if cnt < 2:
+            continue
+
+        summary[col[i]]['median'] = np.median(payoff[i])
         summary[col[i]]['std'] = np.std(payoff[i])
-        summary[col[i]]['count'] = len(payoff[i])
+        summary[col[i]]['std_r'] = stats.iqr(payoff[i], scale='normal')
         if col[i] == 'Negative':
             summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff[i], 0, alternative='less').pvalue
         else:
