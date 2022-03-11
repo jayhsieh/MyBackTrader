@@ -118,59 +118,59 @@ def execute(target, freq_data, partial_name, start, end):
 
 def analyze_transaction(trans):
     # classify data
-    payoff = [[], [], [], [], []]
-    pay = pd.DataFrame(columns=['value', 'in_price', 'out_price', 'amount', 'atr', 'is_long', 'is_win', 'is_strategy'])
+    payoff_list = [[], [], [], [], []]
+    payoff = pd.DataFrame(columns=['value', 'in_price', 'out_price', 'amount', 'atr', 'is_long', 'is_win', 'is_strategy'])
     for i in range(len(trans)):
         if not i % 2:
             continue
 
         p = trans['value'][i] + trans['value'][i - 1]
-        payoff[0].append(p)  # all
+        payoff_list[0].append(p)  # all
 
         pa = pd.DataFrame([[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]), trans['atr'][i - 1],
                             trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
-                          columns=pay.columns, index=[trans.index[i]])
-        pay = pay.append(pa)
+                          columns=payoff.columns, index=[trans.index[i]])
+        payoff = payoff.append(pa)
 
         if p > 0:
-            payoff[1].append(p)  # positive
+            payoff_list[1].append(p)  # positive
         else:
-            payoff[2].append(p)  # negative
+            payoff_list[2].append(p)  # negative
 
         if trans.index[i].minute % 15 == 1:
-            payoff[4].append(p)  # clean
+            payoff_list[4].append(p)  # clean
         else:
-            payoff[3].append(p)  # strategy
+            payoff_list[3].append(p)  # strategy
 
     # statistics
     col = ['All', 'Positive', 'Negative', 'Strategy', 'Clean']
     summary = pd.DataFrame(columns=col,
                            index=['count', 'sum', 'mean', 'median', 'std', 'std_r', 'pvalue'])
-    for i in range(len(payoff)):
-        cnt = len(payoff[i])
+    for i in range(len(payoff_list)):
+        cnt = len(payoff_list[i])
         summary[col[i]]['count'] = cnt
-        summary[col[i]]['sum'] = sum(payoff[i])
-        summary[col[i]]['mean'] = np.mean(payoff[i])
+        summary[col[i]]['sum'] = sum(payoff_list[i])
+        summary[col[i]]['mean'] = np.mean(payoff_list[i])
 
         # skip for only one sample
         if cnt < 2:
             continue
 
-        summary[col[i]]['median'] = np.median(payoff[i])
-        summary[col[i]]['std'] = np.std(payoff[i])
-        summary[col[i]]['std_r'] = stats.iqr(payoff[i], scale='normal')
+        summary[col[i]]['median'] = np.median(payoff_list[i])
+        summary[col[i]]['std'] = np.std(payoff_list[i])
+        summary[col[i]]['std_r'] = stats.iqr(payoff_list[i], scale='normal')
         if col[i] == 'Negative':
-            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff[i], 0, alternative='less').pvalue
+            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff_list[i], 0, alternative='less').pvalue
         else:
-            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff[i], 0, alternative='greater').pvalue
+            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff_list[i], 0, alternative='greater').pvalue
 
     print(summary)
-    return pay
+    return payoff
 
 
 def single_strategy(target, freq_data, partial_name, start, end):
     title = target
-    returns, positions = execute(target, freq_data, partial_name, start, end)
+    returns, positions, trans = execute(target, freq_data, partial_name, start, end)
     file_name = target + partial_name + '_reversion_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
@@ -189,7 +189,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos = execute(t, freq_data, start, end)
+        _, pos, trans = execute(t, freq_data, start, end)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -200,7 +200,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     returns['cash'][0] = 0
     returns.index = [x.to_datetime64() for x in returns.index]
 
-    file_name = '3CCY' + partial_name + '_reversion_performance.html'
+    file_name = str(len(targets)) + 'CCY' + partial_name + '_reversion_performance.html'
     quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
 
     date_diff = pd.DataFrame(positions.index).diff()
@@ -238,6 +238,7 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
         d1 = position.index[i - 1]
         trans_date = pd.DataFrame(columns=['value', 'cnt'])
         for trans in transactions:
+            # TODO: there still has a bug here
             tr = trans.loc[trans.index.date == d]
             if len(tr) == 0:
                 continue
@@ -263,7 +264,7 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
     returns['cash'][0] = 0
     returns.index = [x.to_datetime64() for x in returns.index]
 
-    file_name = str(len(targets)) + 'CCY' + partial_name + 'all_reversion.html'
+    file_name = str(len(targets)) + 'CCY' + partial_name + '_all_reversion_performance.html'
     quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
 
     date_diff = pd.DataFrame(position.index).diff()
@@ -286,10 +287,10 @@ if __name__ == '__main__':
     # for ccy_target in ccy_targets:
     #     single_strategy(ccy_target, freq, start_date, end_date)
 
-    ccy_targets = ['GBPUSD', 'NZDUSD', 'USDZAR']
-    multiple_all_strategy(ccy_targets, freq_list, sub_name_str, start_date, end_date)
+    # ccy_targets = ['GBPUSD', 'NZDUSD', 'USDZAR']
+    # multiple_all_strategy(ccy_targets, freq_list, sub_name_str, start_date, end_date)
 
-    # ccy_target = 'USDZAR'
-    # single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
+    ccy_target = 'USDZAR'
+    single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
 
     sys.exit(0)
