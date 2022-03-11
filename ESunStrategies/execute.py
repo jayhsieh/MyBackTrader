@@ -111,9 +111,9 @@ def execute(target, freq_data, partial_name, start, end):
     # b.params.filename = './output/' + target + partial_name + '_figure.html'
     # cerebro.plot(b)
 
-    analyze_transaction(strat.transaction)
+    trans = analyze_transaction(strat.transaction)
 
-    return exe_ret, exe_pos
+    return exe_ret, exe_pos, trans
 
 
 def analyze_transaction(trans):
@@ -165,6 +165,7 @@ def analyze_transaction(trans):
             summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff[i], 0, alternative='greater').pvalue
 
     print(summary)
+    return pay
 
 
 def single_strategy(target, freq_data, partial_name, start, end):
@@ -206,9 +207,72 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
 
 
+def multiple_all_strategy(targets, freq_data, partial_name, start, end):
+    title = ''
+    for t in targets:
+        if len(title) == 0:
+            title += t
+        else:
+            title += ' + ' + t
+
+    position = pd.DataFrame(columns=['cash'])
+    transactions = []
+    for t in targets:
+        print(t)
+        _, pos, trans = execute(t, freq_data, partial_name, start, end)
+
+        transactions.append(trans)
+
+        if len(position) == 0:
+            position = pd.DataFrame(columns=['cash'], index=pos.index)
+
+    # position = pd.read_pickle("posi.pkl")
+    # for i in range(len(targets)):
+    #     t = targets[i]
+    #     transactions.append(pd.read_pickle(f"trans_{t}.pkl"))
+
+    # Merge performance
+    position.iloc[0] = 10000
+    for i in range(1, len(position)):
+        d = position.index[i]
+        d1 = position.index[i - 1]
+        trans_date = pd.DataFrame(columns=['value', 'cnt'])
+        for trans in transactions:
+            tr = trans.loc[trans.index.date == d]
+            if len(tr) == 0:
+                continue
+
+            for j in range(len(tr)):
+                t = tr.iloc[j]
+                t_idx = tr.index[j]
+                add_min = ((t_idx.minute + 13) // 15) * 15 + 1 - t_idx.minute
+                t_idx += datetime.timedelta(seconds=add_min * 60)
+                if t_idx in trans_date.index:
+                    trans_date.loc[t_idx, 'value'] += t['value']
+                    trans_date.loc[t_idx, 'cnt'] += 1
+                else:
+                    trans_date.loc[t_idx, 'value'] = t['value']
+                    trans_date.loc[t_idx, 'cnt'] = 1
+
+        if len(trans_date):
+            position.loc[d, 'cash'] = position.loc[d1, 'cash'] + (trans_date['value'] / trans_date['cnt']).sum()
+        else:
+            position.loc[d, 'cash'] = position.loc[d1, 'cash']
+
+    returns = position.pct_change()
+    returns['cash'][0] = 0
+    returns.index = [x.to_datetime64() for x in returns.index]
+
+    file_name = str(len(targets)) + 'CCY' + partial_name + 'all_reversion.html'
+    quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
+
+    date_diff = pd.DataFrame(position.index).diff()
+    date_diff['Datetime'] /= np.timedelta64(1, 'D')
+
+
 if __name__ == '__main__':
-    start_date = datetime.datetime(2021, 1, 1)
-    end_date = datetime.datetime(2021, 9, 1)
+    start_date = datetime.datetime(2020, 1, 1)
+    end_date = datetime.datetime(2021, 4, 1)
     freq_list = ['_1m', '_15m']
 
     sub_name_str = ''
@@ -222,7 +286,10 @@ if __name__ == '__main__':
     # for ccy_target in ccy_targets:
     #     single_strategy(ccy_target, freq, start_date, end_date)
 
-    ccy_target = 'USDZAR'
-    single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
+    ccy_targets = ['GBPUSD', 'NZDUSD', 'USDZAR']
+    multiple_all_strategy(ccy_targets, freq_list, sub_name_str, start_date, end_date)
+
+    # ccy_target = 'USDZAR'
+    # single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
 
     sys.exit(0)

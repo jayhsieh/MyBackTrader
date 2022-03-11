@@ -49,10 +49,11 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             if order.isbuy():
                 val = -order.executed.price * order.executed.size
                 tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
-                                  columns=self.transaction.columns, index=[self.data0.datetime.datetime(0)])
+                                  columns=self.transaction.columns,
+                                  index=[self.data0.datetime.datetime(0)])
                 msg = "買單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(
                     order.ref, order.executed.price, order.executed.comm, order.executed.size)
-                if order.exectype == 4:
+                if order.exectype == 4 and isinstance(order.price, float):
                     # ExecTypes 0: Market, 1: Close, 2: Limit, 3: Stop, 4: StopLimit, 5: StopTrail, 6: StopTrailLimit,
                     # 7: Historical
                     atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
@@ -64,10 +65,11 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             elif order.issell():
                 val = -order.executed.price * order.executed.size
                 tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
-                                  columns=self.transaction.columns, index=[self.data0.datetime.datetime(0)])
+                                  columns=self.transaction.columns,
+                                  index=[self.data0.datetime.datetime(0)])
                 msg = "賣單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(
                     order.ref, order.executed.price, order.executed.comm, order.executed.size)
-                if order.exectype == 4:
+                if order.exectype == 4 and isinstance(order.price, float):
                     atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
                     msg = msg + ", ATR: {}".format(atr)
                     tr.loc[self.data0.datetime.datetime(0), 'atr'] = atr
@@ -84,10 +86,10 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             valid2 = datetime.timedelta(minutes=5)
 
             if position_size > 0:
-                self.order_buy_close = self.sell(exectype=bt.Order.Limit, price=self.order_buy_close.plimit,
+                self.order_buy_close = self.sell(exectype=bt.Order.StopLimit, plimit=self.order_buy_close.plimit,
                                                  valid=valid2, size=abs(position_size))
             elif position_size < 0:
-                self.order_sell_close = self.buy(exectype=bt.Order.Limit, price=self.order_sell_close.plimit,
+                self.order_sell_close = self.buy(exectype=bt.Order.StopLimit, plimit=self.order_sell_close.plimit,
                                                  valid=valid2, size=abs(position_size))
             return
         elif self.data0.datetime.datetime(0).minute % 15:
