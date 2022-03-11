@@ -170,7 +170,7 @@ def analyze_transaction(trans):
 
 def single_strategy(target, freq_data, partial_name, start, end):
     title = target
-    returns, positions, trans = execute(target, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
+    returns, positions, _ = execute(target, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
     file_name = target + partial_name + '_reversion_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
@@ -189,7 +189,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
+        _, pos, _ = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -221,6 +221,7 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
         print(t)
         _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
 
+        trans = analyze_transaction(trans)
         transactions.append(trans)
 
         if len(position) == 0:
