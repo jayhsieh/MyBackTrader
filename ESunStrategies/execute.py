@@ -69,7 +69,7 @@ def read_config():
     return config
 
 
-def execute(target, freq_data, partial_name, start, end):
+def execute(target, freq_data, partial_name, start, end, strategy, sizer=MySizer):
     cerebro = bt.Cerebro()
     slippage = get_settings4tag(target, 'slippage')
 
@@ -82,9 +82,9 @@ def execute(target, freq_data, partial_name, start, end):
         data2 = get_data_df(target + '_OHLC', target, freq_data[1], start, end)
         cerebro.adddata(data2, name=target + freq_data[1])
 
-    cerebro.addstrategy(Intra15MinutesReverseStrategy)
+    cerebro.addstrategy(strategy)
     cerebro.broker.setcash(10000.0)
-    cerebro.addsizer(MySizer)
+    cerebro.addsizer(sizer)
     cerebro.addsizer(bt.sizers.FixedSize, stake=10000)
     cerebro.broker.set_slippage_fixed(fixed=slippage)
     # cerebro.broker.setcommission(commission=0.001)  # 0.1%
@@ -170,7 +170,7 @@ def analyze_transaction(trans):
 
 def single_strategy(target, freq_data, partial_name, start, end):
     title = target
-    returns, positions, trans = execute(target, freq_data, partial_name, start, end)
+    returns, positions, trans = execute(target, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
     file_name = target + partial_name + '_reversion_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
@@ -189,7 +189,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, start, end)
+        _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -219,7 +219,7 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
     transactions = []
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, partial_name, start, end)
+        _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
 
         transactions.append(trans)
 
@@ -272,8 +272,8 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
 
 
 if __name__ == '__main__':
-    start_date = datetime.datetime(2020, 1, 1)
-    end_date = datetime.datetime(2021, 4, 1)
+    start_date = datetime.datetime(2021, 1, 1)
+    end_date = datetime.datetime(2021, 9, 1)
     freq_list = ['_1m', '_15m']
 
     sub_name_str = ''
