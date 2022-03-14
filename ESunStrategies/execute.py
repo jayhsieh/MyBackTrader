@@ -11,6 +11,7 @@ from scipy import stats
 
 # from Intra15mins_reversion_strategy import Intra15MinutesReverseStrategy
 from multipleTimeframes import Intra15MinutesReverseStrategy
+from stochatic_oscillator_strategy import StochasticOscillatorStrategy
 
 from backtrader.utils.db_conn import MyPostgres
 from backtrader_plotting import Bokeh
@@ -119,7 +120,13 @@ def execute(target, freq_data, partial_name, start, end, strategy, sizer=MySizer
 def analyze_transaction(trans):
     # classify data
     payoff_list = [[], [], [], [], []]
-    payoff = pd.DataFrame(columns=['value', 'in_price', 'out_price', 'amount', 'atr', 'is_long', 'is_win', 'is_strategy'])
+    if 'atr' in list(trans):
+        payoff = pd.DataFrame(
+            columns=['value', 'in_price', 'out_price', 'amount', 'atr', 'is_long', 'is_win', 'is_strategy'])
+    else:
+        payoff = pd.DataFrame(
+            columns=['value', 'in_price', 'out_price', 'amount', 'is_long', 'is_win', 'is_strategy'])
+
     for i in range(len(trans)):
         if not i % 2:
             continue
@@ -127,9 +134,17 @@ def analyze_transaction(trans):
         p = trans['value'][i] + trans['value'][i - 1]
         payoff_list[0].append(p)  # all
 
-        pa = pd.DataFrame([[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]), trans['atr'][i - 1],
-                            trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
-                          columns=payoff.columns, index=[trans.index[i]])
+        if 'atr' in list(trans):
+            pa = pd.DataFrame(
+                [[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]), trans['atr'][i - 1],
+                    trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
+                columns=payoff.columns, index=[trans.index[i]])
+        else:
+            pa = pd.DataFrame(
+                [[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]),
+                  trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
+                columns=payoff.columns, index=[trans.index[i]])
+
         payoff = payoff.append(pa)
 
         if p > 0:
@@ -170,7 +185,7 @@ def analyze_transaction(trans):
 
 def single_strategy(target, freq_data, partial_name, start, end):
     title = target
-    returns, positions, _ = execute(target, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
+    returns, positions, transactions = execute(target, freq_data, partial_name, start, end, StochasticOscillatorStrategy)
     file_name = target + partial_name + '_reversion_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
@@ -189,7 +204,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos, _ = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
+        _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -273,8 +288,8 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
 
 
 if __name__ == '__main__':
-    start_date = datetime.datetime(2021, 1, 1)
-    end_date = datetime.datetime(2021, 9, 1)
+    start_date = datetime.datetime(2020, 2, 1)
+    end_date = datetime.datetime(2020, 5, 1)
     freq_list = ['_1m', '_15m']
 
     sub_name_str = ''
@@ -291,7 +306,7 @@ if __name__ == '__main__':
     # ccy_targets = ['GBPUSD', 'NZDUSD', 'USDZAR']
     # multiple_all_strategy(ccy_targets, freq_list, sub_name_str, start_date, end_date)
 
-    ccy_target = 'USDZAR'
+    ccy_target = 'GBPUSD'
     single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
 
     sys.exit(0)
