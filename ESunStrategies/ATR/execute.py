@@ -204,7 +204,7 @@ def single_strategy(target, freq_data, partial_name, start, end, src='Histdata')
     returns, positions, transactions = execute(target, freq_data, partial_name, start, end,
                                                Intra15MinutesReverseStrategy, source=src)
     file_name = target + partial_name + '_reversion_performance_report.html'
-    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
+    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
 
 
 def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdata'):
