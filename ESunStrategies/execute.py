@@ -25,16 +25,22 @@ class MySizer(bt.Sizer):
 
     def _getsizing(self, comminfo, cash, data, isbuy):
         unit = self.config['size']['unit_basic']
+
+        # Find latest data index
+        j = -1
+        while math.isnan(data.close[j]):
+            j -= 1
+
         cash_max_limit_portion = self.config['size']['size_portion']
-        size = math.floor(cash * cash_max_limit_portion / data.close[-1] / unit) * unit
+        size = math.floor(cash * cash_max_limit_portion / data.close[j] / unit) * unit
         return size
 
 
-def get_data_df(table_name, target, freq_data, start, end):
+def get_data_df(table_name, target, freq_data, start, end, source):
     myDB = MyPostgres()
     freq_data = freq_data.replace('_', '').replace('m', 'min').replace('h', 'H')
     get_data = '''SELECT date + time, open, high, low, close FROM ''' + '\"' + table_name + "\" "  \
-               + f"WHERE freq = '{freq_data}' AND broker='Histdata' " \
+               + f"WHERE freq = '{freq_data}' AND broker='{source}' " \
                + f"ORDER BY date, time"
     rows = myDB.get_data(get_data)
     myDB.disconnect()
@@ -70,17 +76,17 @@ def read_config():
     return config
 
 
-def execute(target, freq_data, partial_name, start, end, strategy, sizer=MySizer):
+def execute(target, freq_data, partial_name, start, end, strategy, sizer=MySizer, source='Histdata'):
     cerebro = bt.Cerebro()
     slippage = get_settings4tag(target, 'slippage')
 
     if len(freq_data) == 1:
-        data = get_data_df(target + '_OHLC', target, freq_data[0], start, end)
+        data = get_data_df(target + '_OHLC', target, freq_data[0], start, end, source)
         cerebro.adddata(data, name=target + freq_data[0])
     elif len(freq_data) == 2:
-        data1 = get_data_df(target + '_OHLC', target, freq_data[0], start, end)
+        data1 = get_data_df(target + '_OHLC', target, freq_data[0], start, end, source)
         cerebro.adddata(data1, name=target + freq_data[0])
-        data2 = get_data_df(target + '_OHLC', target, freq_data[1], start, end)
+        data2 = get_data_df(target + '_OHLC', target, freq_data[1], start, end, source)
         cerebro.adddata(data2, name=target + freq_data[1])
 
     cerebro.addstrategy(strategy)
@@ -183,28 +189,33 @@ def analyze_transaction(trans):
     return payoff
 
 
-def single_strategy(target, freq_data, partial_name, start, end):
-    title = target
-    returns, positions, transactions = execute(target, freq_data, partial_name, start, end, StochasticOscillatorStrategy)
-    file_name = target + partial_name + '_reversion_performance_report.html'
-    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
-
-
-def multiple_strategy(targets, freq_data, partial_name, start, end):
+def get_title(targets):
     title = ''
     for t in targets:
         if len(title) == 0:
             title += t
         else:
             title += ' + ' + t
+    return title
 
+
+def single_strategy(target, freq_data, partial_name, start, end, src='Histdata'):
+    title = target
+    returns, positions, transactions = execute(target, freq_data, partial_name, start, end,
+                                               Intra15MinutesReverseStrategy, source=src)
+    file_name = target + partial_name + '_reversion_performance_report.html'
+    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
+
+
+def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdata'):
+    title = get_title(targets)
     config = read_config()
-
     positions = pd.DataFrame(columns=targets)
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
+        _, pos, trans = execute(t, freq_data, partial_name, start, end,
+                                Intra15MinutesReverseStrategy, source=src)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -215,26 +226,26 @@ def multiple_strategy(targets, freq_data, partial_name, start, end):
     returns['cash'][0] = 0
     returns.index = [x.to_datetime64() for x in returns.index]
 
-    file_name = str(len(targets)) + 'CCY' + partial_name + '_reversion_performance.html'
+    if int(config['control']['isWeek']):
+        num_week = end.isocalendar()[1]
+        file_name = f'{str(len(targets))}CCY{partial_name}_w{num_week}_reversion_performance.html'
+    else:
+        file_name = f'{str(len(targets))}CCY{partial_name}_reversion_performance.html'
+
     quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
 
     date_diff = pd.DataFrame(positions.index).diff()
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
 
 
-def multiple_all_strategy(targets, freq_data, partial_name, start, end):
-    title = ''
-    for t in targets:
-        if len(title) == 0:
-            title += t
-        else:
-            title += ' + ' + t
-
+def multiple_all_strategy(targets, freq_data, partial_name, start, end, src='Histdata'):
+    title = get_title(targets)
     position = pd.DataFrame(columns=['cash'])
     transactions = []
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, partial_name, start, end, Intra15MinutesReverseStrategy)
+        _, pos, trans = execute(t, freq_data, partial_name, start, end,
+                                Intra15MinutesReverseStrategy, source=src)
 
         trans = analyze_transaction(trans)
         transactions.append(trans)
@@ -288,22 +299,32 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end):
 
 
 if __name__ == '__main__':
-    start_date = datetime.datetime(2020, 2, 1)
-    end_date = datetime.datetime(2020, 5, 1)
+    config = read_config()
+    if int(config['control']['isWeek']):
+        today = datetime.datetime.today().date()
+        start_date = today - datetime.timedelta(days=today.weekday() + 1 + 7)
+        end_date = start_date + datetime.timedelta(days=6)
+        source = 'HSBC'
+    else:
+        start_date = datetime.datetime(2020, 2, 1)
+        end_date = datetime.datetime(2020, 5, 1)
+        source = 'Histdata'
+
     freq_list = ['_1m', '_15m']
 
     sub_name_str = ''
     for i in range(0, len(freq_list)):
         sub_name_str = sub_name_str + freq_list[i]
-    # ccy_targets = ['USDZAR', 'GBPUSD', 'USDMXN']
-    # multiple_strategy(ccy_targets, freq, start_date, end_date)
+
+    # ccy_targets = ['AUDUSD', 'GBPUSD', 'NZDUSD', 'USDZAR']
+    # multiple_strategy(ccy_targets, freq_list, sub_name_str, start_date, end_date, source)
 
     # ccy_targets = ['AUDUSD', 'EURUSD', 'GBPUSD', 'NZDUSD', 'USDCAD', 'USDCHF',
     #                'USDJPY', 'USDMXN', 'USDSEK', 'USDSGD', 'USDZAR']
     # for ccy_target in ccy_targets:
     #     single_strategy(ccy_target, freq, start_date, end_date)
 
-    # ccy_targets = ['GBPUSD', 'NZDUSD', 'USDZAR']
+    # ccy_targets = ['AUDUSD', 'GBPUSD', 'NZDUSD', 'USDZAR']
     # multiple_all_strategy(ccy_targets, freq_list, sub_name_str, start_date, end_date)
 
     ccy_target = 'GBPUSD'
