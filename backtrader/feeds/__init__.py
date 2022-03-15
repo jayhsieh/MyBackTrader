@@ -32,6 +32,7 @@ from .sierrachart import *
 from .mt4csv import *
 from .pandafeed import *
 from .influxfeed import *
+
 try:
     from .ibdata import *
 except ImportError:
@@ -46,6 +47,18 @@ try:
     from .oanda import OandaData
 except ImportError:
     pass  # The user may not have something installed
+
+try:
+    from .fxdata import FXData
+except ImportError as e:
+    print(e)
+    pass
+
+try:
+    from .redisdata import RedisData
+except ImportError as e:
+    print(e)
+    pass
 
 try:
     from .binance_feed import BinanceData

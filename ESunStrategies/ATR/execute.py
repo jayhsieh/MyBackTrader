@@ -58,6 +58,33 @@ def get_data_df(table_name, target, freq_data, start, end, source):
     return data
 
 
+def get_data_live(target, freq_data):
+    if 'm' in freq_data:
+        time_unit = 'Minutes'
+        datacomp = int(freq_data[0:freq_data.index('m')])
+    elif 'h' in freq_data:
+        time_unit = 'Hours'
+        datacomp = int(freq_data[0:freq_data.index('h')])
+    else:
+        time_unit = ''
+        datacomp = 0
+
+    timeframe = bt.TimeFrame.TFrame(time_unit)
+
+    data_tf = bt.TimeFrame.Ticks
+    data_comp = 5
+    datakwargs = dict(
+        timeframe=data_tf, compression=data_comp,
+    )
+    rekwargs = dict(timeframe=timeframe, compression=datacomp)
+
+    data_factory = bt.feeds.HSBCData
+    ccy = f"{target[:3]}/{target[4:]}"
+    data = data_factory(dataname=ccy, **datakwargs)
+
+    return data, rekwargs
+
+
 def get_settings4tag(target, tag):
     """
     target is XXXYYY
@@ -76,7 +103,7 @@ def read_config():
     return config
 
 
-def execute(target, freq_data, partial_name, start, end, strategy, sizer=MySizer, source='Histdata'):
+def execute_history(target, freq_data, partial_name, start, end, strategy, sizer=MySizer, source='Histdata'):
     cerebro = bt.Cerebro()
     slippage = get_settings4tag(target, 'slippage')
 
@@ -201,7 +228,7 @@ def get_title(targets):
 
 def single_strategy(target, freq_data, partial_name, start, end, src='Histdata'):
     title = target
-    returns, positions, transactions = execute(target, freq_data, partial_name, start, end,
+    returns, positions, transactions = execute_history(target, freq_data, partial_name, start, end,
                                                Intra15MinutesReverseStrategy, source=src)
     file_name = target + partial_name + '_reversion_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
@@ -214,7 +241,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, partial_name, start, end,
+        _, pos, trans = execute_history(t, freq_data, partial_name, start, end,
                                 Intra15MinutesReverseStrategy, source=src)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
@@ -244,7 +271,7 @@ def multiple_all_strategy(targets, freq_data, partial_name, start, end, src='His
     transactions = []
     for t in targets:
         print(t)
-        _, pos, trans = execute(t, freq_data, partial_name, start, end,
+        _, pos, trans = execute_history(t, freq_data, partial_name, start, end,
                                 Intra15MinutesReverseStrategy, source=src)
 
         trans = analyze_transaction(trans)

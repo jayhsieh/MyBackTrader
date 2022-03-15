@@ -23,10 +23,18 @@ from __future__ import (absolute_import, division, print_function,
 
 import datetime
 import math
+import pytz
 import time as _time
 
 from .py3 import string_types
 
+TZ_AU = pytz.timezone('Australia/Sydney')
+"""Time zone of Australia market"""
+TZ_TP = pytz.timezone('Asia/Taipei')
+"""Time zone of Taipei market"""
+TZ_US = pytz.timezone('America/New_York')
+"""Time zone of US market"""
+TZ_UTC = pytz.timezone('UTC')
 
 ZERO = datetime.timedelta(0)
 
@@ -44,6 +52,8 @@ TIME_MAX = datetime.time(23, 59, 59, 999990)
 # To avoid rounding errors taking dates to next day
 TIME_MIN = datetime.time.min
 
+DT_MIN = datetime.datetime.min
+
 
 def tzparse(tz):
     # If no object has been provided by the user and a timezone can be
@@ -56,7 +66,7 @@ def tzparse(tz):
     try:
         import pytz  # keep the import very local
     except ImportError:
-        return Localizer(tz)    # nothing can be done
+        return Localizer(tz)  # nothing can be done
 
     tzs = tz
     if tzs == 'CST':  # usual alias
@@ -65,7 +75,7 @@ def tzparse(tz):
     try:
         tz = pytz.timezone(tzs)
     except pytz.UnknownTimeZoneError:
-        return Localizer(tz)    # nothing can be done
+        return Localizer(tz)  # nothing can be done
 
     return tz
 
@@ -136,7 +146,6 @@ class _LocalTimezone(datetime.tzinfo):
 UTC = _UTC()
 TZLocal = _LocalTimezone()
 
-
 HOURS_PER_DAY = 24.0
 MINUTES_PER_HOUR = 60.0
 SECONDS_PER_MINUTE = 60.0
@@ -165,14 +174,22 @@ def num2date(x, tz=None, naive=True):
     ix = int(x)
     dt = datetime.datetime.fromordinal(ix)
     remainder = float(x) - ix
-    hour, remainder = divmod(HOURS_PER_DAY * remainder, 1)
-    minute, remainder = divmod(MINUTES_PER_HOUR * remainder, 1)
-    second, remainder = divmod(SECONDS_PER_MINUTE * remainder, 1)
-    microsecond = int(MUSECONDS_PER_SECOND * remainder)
+
+    remainder *= HOURS_PER_DAY
+    hour = math.floor(remainder)
+
+    remainder = (remainder - hour) * MINUTES_PER_HOUR
+    minute = math.floor(remainder)
+
+    remainder = (remainder - minute) * SECONDS_PER_MINUTE
+    second = math.floor(remainder)
+
+    remainder = (remainder - second) * MUSECONDS_PER_SECOND
+    microsecond = math.floor(remainder)
     if microsecond < 10:
         microsecond = 0  # compensate for rounding errors
 
-    if True and tz is not None:
+    if tz is not None:
         dt = datetime.datetime(
             dt.year, dt.month, dt.day, int(hour), int(minute), int(second),
             microsecond, tzinfo=UTC)
@@ -242,3 +259,46 @@ def time2num(tm):
            tm.microsecond / MUSECONDS_PER_DAY)
 
     return num
+
+
+def str2dt(dt_string):
+    dt_str = dt_string.split('+')[0].split('T')
+
+    date_str = dt_str[0].split('-')
+    date_int = [int(s) for s in date_str]
+
+    dt_str_split = dt_str[1].split('.')
+    if len(dt_str_split) == 2:
+        time_str = dt_str_split[0].split(':') + [dt_str_split[1][:6].ljust(6, "0")]
+        time_int = [int(s) for s in time_str]
+
+        dt = datetime.datetime(date_int[0], date_int[1], date_int[2],
+                               time_int[0], time_int[1], time_int[2], time_int[3])
+        return dt
+    else:
+        time_str = dt_str_split[0].split(':')
+        time_int = [int(s) for s in time_str]
+
+        dt = datetime.datetime(date_int[0], date_int[1], date_int[2],
+                               time_int[0], time_int[1], time_int[2])
+        return dt
+
+
+TD1 = datetime.timedelta(days=1)
+"""One day of time delta"""
+
+
+def get_fx_eod_date(dt: datetime):
+    """
+    Gets EOD date in FX market.
+    The date line is set as 5 p.m. N.Y. time./\n
+    :param dt: DateTime in Taipei time
+    :return: EOD date in FX market.
+    """
+    dt_us = TZ_TP.localize(dt).astimezone(TZ_US)
+    dt = dt_us.date()
+    if dt_us.hour >= 17:
+        # Switch date after 5 p.m. N.Y. time
+        dt = dt + TD1
+
+    return dt

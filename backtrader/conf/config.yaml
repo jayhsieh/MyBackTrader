@@ -1,0 +1,50 @@
+# Environment
+env: DEV
+
+# General configurations
+postgres:
+  host: 172.27.214.104
+  port: 5432
+  database: Market
+  username: Quant
+  password: Quant
+
+# DEV environment
+DEV:
+  # Queue size for streamer in BackTrader.stores
+  queue_size: 100000
+
+  kafka:
+    ip: 172.27.110.247:9092
+    offset: latest
+    idle: 20000
+    tick_topic: HSBC_Tick
+
+  redis:
+    url: redis://172.27.110.247:6379/2
+    time_out: 10
+    data_src: HSBC
+
+# SIT environment
+SIT:
+  # Queue size for streamer in BackTrader.stores
+  queue_size: 100000
+
+  kafka:
+    ip: amihap1t.testesunbank.com.tw:9093
+    offset: latest
+    idle: 20000
+    tick_topic: TS0152_TICKQUOTES_00_1
+    order_topic: TS0152_ORDERS_00_1
+    execute_topic: TS0152_EXECUTIONS_00_1
+    username: TS0152
+    password: ts0152-secret
+    group: TS0152_00
+    ca_file: ./conf/amihap1t.cer
+    sasl_mechanism: SCRAM-SHA-256
+    security_protocol: SASL_SSL
+
+  redis:
+    url: redis://10.240.228.47/2
+    time_out: 10
+    data_src: HSBC
