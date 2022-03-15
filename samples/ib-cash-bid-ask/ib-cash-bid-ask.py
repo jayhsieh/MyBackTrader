@@ -24,9 +24,6 @@
 # BID: <tickPrice tickerId=16777217, field=1, price=1.11582, canAutoExecute=1>
 # ASK: <tickPrice tickerId=16777219, field=2, price=1.11583, canAutoExecute=1>
 
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
 import backtrader as bt
 import datetime
 
