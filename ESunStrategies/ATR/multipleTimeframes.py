@@ -80,6 +80,11 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             self.log("Order Canceled: 訂單編號: {}, 限價價格: {}".format(order.ref, order.plimit), doprint=True)
 
     def next(self):
+        for d in self.datas:
+            msg = f'{d._name}, {len(d)}, {bt.num2date(d.datetime[0])},' \
+                  f' {d.open[0]}, {d.high[0]}, {d.low[0]}, {d.close[0]}'
+            self.log(msg, doprint=True)
+
         if self.data0.datetime.datetime(0).minute % 15 == 10:
             # For the last 5 min, create close order for outstanding position
             position_size = self.getposition().size

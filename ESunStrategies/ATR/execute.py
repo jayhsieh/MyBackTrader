@@ -59,27 +59,30 @@ def get_data_df(table_name, target, freq_data, start, end, source):
 
 
 def get_data_live(target, freq_data):
-    if 'm' in freq_data:
+    if 's' in freq_data:
+        time_unit = 'Seconds'
+        datacomp = int(freq_data[1:freq_data.index('s')])
+    elif 'm' in freq_data:
         time_unit = 'Minutes'
-        datacomp = int(freq_data[0:freq_data.index('m')])
+        datacomp = int(freq_data[1:freq_data.index('m')])
     elif 'h' in freq_data:
         time_unit = 'Hours'
-        datacomp = int(freq_data[0:freq_data.index('h')])
+        datacomp = int(freq_data[1:freq_data.index('h')])
     else:
         time_unit = ''
         datacomp = 0
 
     timeframe = bt.TimeFrame.TFrame(time_unit)
 
-    data_tf = bt.TimeFrame.Ticks
+    data_tf = bt.TimeFrame.Seconds
     data_comp = 5
     datakwargs = dict(
-        timeframe=data_tf, compression=data_comp,
+        timeframe=data_tf, compression=1,
     )
     rekwargs = dict(timeframe=timeframe, compression=datacomp)
 
     data_factory = bt.feeds.HSBCData
-    ccy = f"{target[:3]}/{target[4:]}"
+    ccy = f"{target[:3]}/{target[3:]}"
     data = data_factory(dataname=ccy, **datakwargs)
 
     return data, rekwargs
@@ -154,8 +157,14 @@ def execute_live(target, freq, strategy, sizer=MySizer):
     cerebro = bt.Cerebro()
     slippage = get_settings4tag(target, 'slippage')
 
-    data, args = get_data_live(target, freq)
-    cerebro.resampledata(data, **args)
+    data, args0 = get_data_live(target, freq)
+    cerebro.adddata(data, name=target)
+
+    # data1, args1 = get_data_live('EURUSD', freq)
+    # cerebro.adddata(data1, name='EURUSD')
+    # data0, args0 = get_data_live(target, freq)
+    # data0.resample(**args0)
+    cerebro.resampledata(data, **args0, name=target + '_5s')
     cerebro.addstrategy(strategy)
 
     cerebro.broker.setcash(10000.0)
@@ -169,6 +178,7 @@ def execute_live(target, freq, strategy, sizer=MySizer):
     cerebro.addanalyzer(bt.analyzers.AnnualReturn, _name='_AnnualReturn')  # 年化收益率
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='_SharpeRatio')  # 夏普比率
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='_DrawDown')  # 回撤
+
     # 觀察器模塊
     cerebro.addobserver(bt.observers.Value)
     cerebro.addobserver(bt.observers.DrawDown)
@@ -340,6 +350,7 @@ if __name__ == '__main__':
 
     ccy_target = 'GBPUSD'
     single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
+    # TODO: live data does not test yet
     # single_strategy_live(ccy_target, '_15m')
 
     sys.exit(0)
