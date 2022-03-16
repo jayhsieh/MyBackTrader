@@ -40,8 +40,8 @@ def get_data_df(table_name, target, freq_data, start, end, source):
     myDB = MyPostgres()
     freq_data = freq_data.replace('_', '').replace('m', 'min').replace('h', 'H')
     get_data = '''SELECT date + time, open, high, low, close FROM ''' + '\"' + table_name + "\" "  \
-               + f"WHERE freq = '{freq_data}' AND broker='{source}' " \
-               + f"ORDER BY date, time"
+               + f"WHERE freq = '{freq_data}' AND broker='{source}' ORDER BY date, time"
+
     rows = myDB.get_data(get_data)
     myDB.disconnect()
 
@@ -150,6 +150,43 @@ def execute_history(target, freq_data, partial_name, start, end, strategy, sizer
     return exe_ret, exe_pos, trans
 
 
+def execute_live(target, freq, strategy, sizer=MySizer):
+    cerebro = bt.Cerebro()
+    slippage = get_settings4tag(target, 'slippage')
+
+    data, args = get_data_live(target, freq)
+    cerebro.resampledata(data, **args)
+    cerebro.addstrategy(strategy)
+
+    cerebro.broker.setcash(10000.0)
+    cerebro.addsizer(sizer)
+    cerebro.broker.set_slippage_fixed(fixed=slippage)
+
+    # 策略分析模塊
+    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
+    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer)
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='pnl')  # 返回收益率時序數據
+    cerebro.addanalyzer(bt.analyzers.AnnualReturn, _name='_AnnualReturn')  # 年化收益率
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='_SharpeRatio')  # 夏普比率
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='_DrawDown')  # 回撤
+    # 觀察器模塊
+    cerebro.addobserver(bt.observers.Value)
+    cerebro.addobserver(bt.observers.DrawDown)
+    cerebro.addobserver(bt.observers.Trades)
+
+    results = cerebro.run(stdstats=True)
+    strat = results[0]
+    portfolio_stats = strat.analyzers.getbyname('pyfolio')
+    exe_ret, exe_pos, transactions, gross_lev = portfolio_stats.get_pf_items()
+    exe_ret.index = exe_ret.index.tz_convert(None)
+
+    # b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq1 + freq2 + '.html')
+    # b.params.filename = './output/' + target + freq1 + freq2 + '.html'
+    # cerebro.plot(b)
+
+    return exe_ret, exe_pos, strat.transaction
+
+
 def analyze_transaction(trans):
     # classify data
     payoff_list = [[], [], [], [], []]
@@ -229,8 +266,15 @@ def get_title(targets):
 def single_strategy(target, freq_data, partial_name, start, end, src='Histdata'):
     title = target
     returns, positions, transactions = execute_history(target, freq_data, partial_name, start, end,
-                                               Intra15MinutesReverseStrategy, source=src)
-    file_name = target + partial_name + '_reversion_performance_report.html'
+                                                       Intra15MinutesReverseStrategy, source=src)
+    file_name = f'{target}{partial_name}_atr_performance_report.html'
+    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
+
+
+def single_strategy_live(target, freq):
+    title = target
+    returns, positions, transactions = execute_live(target, freq, Intra15MinutesReverseStrategy)
+    file_name = f'{target}{freq}_live_atr_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
 
 
@@ -242,7 +286,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
     for t in targets:
         print(t)
         _, pos, trans = execute_history(t, freq_data, partial_name, start, end,
-                                Intra15MinutesReverseStrategy, source=src)
+                                        Intra15MinutesReverseStrategy, source=src)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -262,66 +306,6 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
     quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
 
     date_diff = pd.DataFrame(positions.index).diff()
-    date_diff['Datetime'] /= np.timedelta64(1, 'D')
-
-
-def multiple_all_strategy(targets, freq_data, partial_name, start, end, src='Histdata'):
-    title = get_title(targets)
-    position = pd.DataFrame(columns=['cash'])
-    transactions = []
-    for t in targets:
-        print(t)
-        _, pos, trans = execute_history(t, freq_data, partial_name, start, end,
-                                Intra15MinutesReverseStrategy, source=src)
-
-        trans = analyze_transaction(trans)
-        transactions.append(trans)
-
-        if len(position) == 0:
-            position = pd.DataFrame(columns=['cash'], index=pos.index)
-
-    # position = pd.read_pickle("posi.pkl")
-    # for i in range(len(targets)):
-    #     t = targets[i]
-    #     transactions.append(pd.read_pickle(f"trans_{t}.pkl"))
-
-    # Merge performance
-    position.iloc[0] = 10000
-    for i in range(1, len(position)):
-        d = position.index[i]
-        d1 = position.index[i - 1]
-        trans_date = pd.DataFrame(columns=['value', 'cnt'])
-        for trans in transactions:
-            # TODO: there still has a bug here
-            tr = trans.loc[trans.index.date == d]
-            if len(tr) == 0:
-                continue
-
-            for j in range(len(tr)):
-                t = tr.iloc[j]
-                t_idx = tr.index[j]
-                add_min = ((t_idx.minute + 13) // 15) * 15 + 1 - t_idx.minute
-                t_idx += datetime.timedelta(seconds=add_min * 60)
-                if t_idx in trans_date.index:
-                    trans_date.loc[t_idx, 'value'] += t['value']
-                    trans_date.loc[t_idx, 'cnt'] += 1
-                else:
-                    trans_date.loc[t_idx, 'value'] = t['value']
-                    trans_date.loc[t_idx, 'cnt'] = 1
-
-        if len(trans_date):
-            position.loc[d, 'cash'] = position.loc[d1, 'cash'] + (trans_date['value'] / trans_date['cnt']).sum()
-        else:
-            position.loc[d, 'cash'] = position.loc[d1, 'cash']
-
-    returns = position.pct_change()
-    returns['cash'][0] = 0
-    returns.index = [x.to_datetime64() for x in returns.index]
-
-    file_name = str(len(targets)) + 'CCY' + partial_name + '_all_reversion_performance.html'
-    quantstats.reports.html(returns['cash'], output=os.path.join(__file__, '../output/', file_name), title=title)
-
-    date_diff = pd.DataFrame(position.index).diff()
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
 
 
@@ -356,5 +340,6 @@ if __name__ == '__main__':
 
     ccy_target = 'GBPUSD'
     single_strategy(ccy_target, freq_list, sub_name_str, start_date, end_date)
+    # single_strategy_live(ccy_target, '_15m')
 
     sys.exit(0)
