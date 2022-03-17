@@ -74,16 +74,10 @@ def get_data_live(target, freq_data):
 
     timeframe = bt.TimeFrame.TFrame(time_unit)
 
-    data_tf = bt.TimeFrame.Seconds
-    data_comp = 5
-    datakwargs = dict(
-        timeframe=data_tf, compression=1,
-    )
-    rekwargs = dict(timeframe=timeframe, compression=datacomp)
-
     data_factory = bt.feeds.HSBCData
     ccy = f"{target[:3]}/{target[3:]}"
-    data = data_factory(dataname=ccy, **datakwargs)
+    data = data_factory(dataname=ccy)
+    rekwargs = dict(timeframe=timeframe, compression=datacomp)
 
     return data, rekwargs
 
@@ -120,11 +114,32 @@ def execute_history(target, freq_data, partial_name, start, end, strategy, sizer
         cerebro.adddata(data2, name=target + freq_data[1])
 
     cerebro.addstrategy(strategy)
+
+    return exec_cerebro(cerebro, slippage, sizer)
+
+
+def execute_live(target, freq, strategy, sizer=MySizer):
+    cerebro = bt.Cerebro()
+
+    # slippage
+    slippage = get_settings4tag(target, 'slippage')
+
+    # data
+    data, args0 = get_data_live(target, freq)
+    cerebro.adddata(data, name=target)
+    cerebro.resampledata(data, **args0, name=target + '_5s')
+
+    # strategy
+    cerebro.addstrategy(strategy)
+
+    return exec_cerebro(cerebro, slippage, sizer)
+
+
+def exec_cerebro(cerebro, slippage, sizer):
     cerebro.broker.setcash(10000.0)
     cerebro.addsizer(sizer)
     cerebro.addsizer(bt.sizers.FixedSize, stake=10000)
-    cerebro.broker.set_slippage_fixed(fixed=slippage)
-    # cerebro.broker.setcommission(commission=0.001)  # 0.1%
+    cerebro.broker.set_slippage_perc(perc=slippage)
 
     # 策略分析模塊
     cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
@@ -151,50 +166,6 @@ def execute_history(target, freq_data, partial_name, start, end, strategy, sizer
     trans = analyze_transaction(strat.transaction)
 
     return exe_ret, exe_pos, trans
-
-
-def execute_live(target, freq, strategy, sizer=MySizer):
-    cerebro = bt.Cerebro()
-    slippage = get_settings4tag(target, 'slippage')
-
-    data, args0 = get_data_live(target, freq)
-    cerebro.adddata(data, name=target)
-
-    # data1, args1 = get_data_live('EURUSD', freq)
-    # cerebro.adddata(data1, name='EURUSD')
-    # data0, args0 = get_data_live(target, freq)
-    # data0.resample(**args0)
-    cerebro.resampledata(data, **args0, name=target + '_5s')
-    cerebro.addstrategy(strategy)
-
-    cerebro.broker.setcash(10000.0)
-    cerebro.addsizer(sizer)
-    cerebro.broker.set_slippage_fixed(fixed=slippage)
-
-    # 策略分析模塊
-    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
-    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer)
-    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='pnl')  # 返回收益率時序數據
-    cerebro.addanalyzer(bt.analyzers.AnnualReturn, _name='_AnnualReturn')  # 年化收益率
-    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='_SharpeRatio')  # 夏普比率
-    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='_DrawDown')  # 回撤
-
-    # 觀察器模塊
-    cerebro.addobserver(bt.observers.Value)
-    cerebro.addobserver(bt.observers.DrawDown)
-    cerebro.addobserver(bt.observers.Trades)
-
-    results = cerebro.run(stdstats=True)
-    strat = results[0]
-    portfolio_stats = strat.analyzers.getbyname('pyfolio')
-    exe_ret, exe_pos, transactions, gross_lev = portfolio_stats.get_pf_items()
-    exe_ret.index = exe_ret.index.tz_convert(None)
-
-    # b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + freq1 + freq2 + '.html')
-    # b.params.filename = './output/' + target + freq1 + freq2 + '.html'
-    # cerebro.plot(b)
-
-    return exe_ret, exe_pos, strat.transaction
 
 
 def analyze_transaction(trans):
@@ -320,6 +291,7 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
 
 
 if __name__ == '__main__':
+    print(datetime.datetime.now())
     config = read_config()
     if int(config['control']['isWeek']):
         today = datetime.datetime.today().date()
