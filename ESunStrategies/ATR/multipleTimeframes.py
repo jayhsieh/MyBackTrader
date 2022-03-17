@@ -56,12 +56,12 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             ord_type = order.OrdTypes[order.ordtype]
             exec_type = order.ExecTypes[order.exectype]
 
-            msg = f'下單紀錄： 編號： {order.ref}, 幣別： {order.data._name}, ' \
-                  f'買賣： {ord_type: <4}, 類型： {exec_type}, '
+            msg = f'下單紀錄: 編號: {order.ref:0>4}, 幣別: {order.data._name}, ' \
+                  f'買賣: {ord_type: <4}, 類型: {exec_type}'
 
             if order.exectype in [order.StopLimit]:
                 deadline = bt.num2date(order.valid)
-                msg += f'限價價格: {order.plimit}, 啟動價格: {order.price}, ' \
+                msg += f', 限價價格: {order.plimit}, 啟動價格: {order.price}, ' \
                        f'期限； {deadline}'
 
             self.log(msg, doprint=True)
@@ -69,38 +69,35 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         elif order.status in [order.Completed]:
             if order.exectype in [order.StopTrail, order.StopTrailLimit]:
                 print('執行停損單')
+                return
+
+            msg = ''
+            tr = None
             if order.isbuy():
                 val = -order.executed.price * order.executed.size
                 tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
                                   columns=self.transaction.columns,
                                   index=[self.data0.datetime.datetime(0)])
-                msg = "買單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(
-                    order.ref, order.executed.price, order.executed.comm, order.executed.size)
-                if order.exectype == 4 and isinstance(order.price, float):
-                    # ExecTypes 0: Market, 1: Close, 2: Limit, 3: Stop, 4: StopLimit, 5: StopTrail, 6: StopTrailLimit,
-                    # 7: Historical
-                    atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
-                    msg = msg + ", ATR: {}".format(atr)
-                    tr.loc[self.data0.datetime.datetime(0), 'atr'] = atr
-
-                self.log(msg, doprint=True)
-                self.transaction = self.transaction.append(tr)
+                msg = "買"
             elif order.issell():
                 val = -order.executed.price * order.executed.size
                 tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
                                   columns=self.transaction.columns,
                                   index=[self.data0.datetime.datetime(0)])
-                msg = "賣單執行: 訂單編號: {}, 執行價格: {}, 手續費: {}, 部位大小: {}".format(
-                    order.ref, order.executed.price, order.executed.comm, order.executed.size)
-                if order.exectype == 4 and isinstance(order.price, float):
-                    atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
-                    msg = msg + ", ATR: {}".format(atr)
-                    tr.loc[self.data0.datetime.datetime(0), 'atr'] = atr
+                msg = "賣"
 
-                self.log(msg, doprint=True)
-                self.transaction = self.transaction.append(tr)
+            msg += f"單執行: 編號: {order.ref:0>4}, 幣別: {order.data._name}, " \
+                   f"執行價格: {order.executed.price}, 部位大小: {order.executed.size}"
+            if order.exectype == 4 and isinstance(order.price, float):
+                atr = abs(order.price - order.plimit) / (self.limit_param - self.trigger_param)
+                msg = msg + ", ATR: {}".format(atr)
+                tr.loc[self.data0.datetime.datetime(0), 'atr'] = atr
+
+            self.log(msg, doprint=True)
+            self.transaction = self.transaction.append(tr)
+
         elif order.status in [order.Canceled]:
-            self.log("Order Canceled: 訂單編號: {}, 限價價格: {}".format(order.ref, order.plimit), doprint=True)
+            self.log(f"Order Canceled: 編號: {order.ref:0>4}, 限價價格: {order.plimit}", doprint=True)
 
     def prenext(self):
         self.next()
@@ -117,6 +114,15 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             msg = f'{d._name}, {len(d)}, {bt.num2date(d.datetime[0])},' \
                   f' {d.open[0]}, {d.high[0]}, {d.low[0]}, {d.close[0]}'
             self.log(msg, doprint=True)
+
+    def notify_trade(self, trade):
+        if not trade.isclosed:
+            return
+
+        self.log(f'交易紀錄: 毛利：{trade.pnl:.2f}, 淨利: {trade.pnlcomm:.2f}, '
+                 f'市值: {self.broker.getvalue():.2f}',
+                 doprint=True)
+        self.log('===========================================================================', doprint=True)
 
     def notify_timer(self, timer, when, *args, **kwargs):
         if not self.is_started:
