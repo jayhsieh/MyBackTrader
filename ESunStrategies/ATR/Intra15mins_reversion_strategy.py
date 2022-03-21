@@ -9,7 +9,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
     def __init__(self, name=None):
         if name is None:
-            name = self.getdatanames()[0]
+            name = self.getdatanames()[0].split('_')[0]
 
         self.is_started = False
 
@@ -20,7 +20,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         self.cnt = {self.trade_data._name: 0,
                     self.index_data._name: 0}
 
-        self.atr = bt.indicators.ATR(self.trade_data)
+        self.atr = bt.indicators.ATR(self.index_data)
         self.order_buy = list()
         self.order_sell = list()
         self.order_buy_close = list()

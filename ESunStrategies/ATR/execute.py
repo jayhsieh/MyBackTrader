@@ -152,6 +152,12 @@ def execute_multiple_live(targets, freq, strategy, sizer=MySizer):
     for t in targets:
         cerebro.addstrategy(strategy, name=t)
 
+    # cerebro.add_timer(
+    #     when=bt.timer.SESSION_START,
+    #     repeat=datetime.timedelta(seconds=5),
+    #     cheat=True
+    # )
+
     return exec_cerebro(cerebro, slippage, sizer)
 
 
