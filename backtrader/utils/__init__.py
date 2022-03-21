@@ -26,3 +26,4 @@ from .ordermisc import *
 from .config import *
 from .db_conn import *
 from .dateintern import *
+from .timeit import *

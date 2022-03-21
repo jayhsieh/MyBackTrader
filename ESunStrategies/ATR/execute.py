@@ -12,7 +12,7 @@ from scipy import stats
 # from Intra15mins_reversion_strategy import Intra15MinutesReverseStrategy
 from multipleTimeframes import Intra15MinutesReverseStrategy
 from stochatic_oscillator_strategy import StochasticOscillatorStrategy
-
+from backtrader.utils.timeit import *
 from backtrader.utils.db_conn import MyPostgres
 from backtrader_plotting import Bokeh
 from backtrader_plotting.schemes import Tradimo
@@ -39,7 +39,7 @@ class MySizer(bt.Sizer):
 def get_data_df(table_name, target, freq_data, start, end, source):
     myDB = MyPostgres()
     freq_data = freq_data.replace('_', '').replace('m', 'min').replace('h', 'H')
-    get_data = '''SELECT date + time, open, high, low, close FROM ''' + '\"' + table_name + "\" "  \
+    get_data = '''SELECT date + time, open, high, low, close FROM ''' + '\"' + table_name + "\" " \
                + f"WHERE freq = '{freq_data}' AND broker='{source}' ORDER BY date, time"
 
     rows = myDB.get_data(get_data)
@@ -188,7 +188,7 @@ def analyze_transaction(trans):
         if 'atr' in list(trans):
             pa = pd.DataFrame(
                 [[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]), trans['atr'][i - 1],
-                    trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
+                  trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
                 columns=payoff.columns, index=[trans.index[i]])
         else:
             pa = pd.DataFrame(
@@ -326,3 +326,8 @@ if __name__ == '__main__':
     # single_strategy_live(ccy_target, '_15m')
 
     sys.exit(0)
+
+
+@measuretime
+def wastetime():
+    sum([i ** 2 for i in range(1000000)])
