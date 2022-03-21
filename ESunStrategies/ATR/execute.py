@@ -31,6 +31,12 @@ class MySizer(bt.Sizer):
         while math.isnan(data.close[j]):
             j -= 1
 
+        # name = data._name
+        # if name.StartWith('USD'):
+        #     size = math.floor(cash * size_portion / data.close[j] / unit) * unit
+        # else:
+        #     size = unit
+
         cash_max_limit_portion = self.config['size']['size_portion']
         size = math.floor(cash * cash_max_limit_portion / data.close[j] / unit) * unit
         return size
@@ -152,20 +158,14 @@ def execute_multiple_live(targets, freq, strategy, sizer=MySizer):
     for t in targets:
         cerebro.addstrategy(strategy, name=t)
 
-    # cerebro.add_timer(
-    #     when=bt.timer.SESSION_START,
-    #     repeat=datetime.timedelta(seconds=5),
-    #     cheat=True
-    # )
-
     return exec_cerebro(cerebro, slippage, sizer)
 
 
 def exec_cerebro(cerebro, slippage, sizer):
-    cerebro.broker.setcash(10000.0)
+    cerebro.broker.setcash(100000.0)
     cerebro.addsizer(sizer)
     cerebro.addsizer(bt.sizers.FixedSize, stake=10000)
-    cerebro.broker.set_slippage_perc(perc=slippage)
+    cerebro.broker.set_slippage_perc(perc=slippage, slip_out=True)
 
     # 策略分析模塊
     cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
