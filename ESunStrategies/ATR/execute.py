@@ -10,6 +10,7 @@ import numpy as np
 from scipy import stats
 
 # from Intra15mins_reversion_strategy import Intra15MinutesReverseStrategy
+from ESunStrategies.ATR.teststrategy import TestStrategy
 from multipleTimeframes import Intra15MinutesReverseStrategy
 from stochatic_oscillator_strategy import StochasticOscillatorStrategy
 from backtrader.utils.timeit import *
@@ -124,7 +125,7 @@ def execute_history(target, freq_data, partial_name, start, end, strategy, sizer
     return exec_cerebro(cerebro, slippage, sizer)
 
 
-def execute_live(target, freq, strategy, sizer=MySizer):
+def execute_live(target, freq, strategy, sizer=MySizer, broker=None):
     cerebro = bt.Cerebro()
 
     # slippage
@@ -137,6 +138,10 @@ def execute_live(target, freq, strategy, sizer=MySizer):
 
     # strategy
     cerebro.addstrategy(strategy)
+
+    # broker
+    if broker is not None:
+        cerebro.broker = broker
 
     return exec_cerebro(cerebro, slippage, sizer)
 
@@ -329,6 +334,18 @@ def wastetime():
     sum([i ** 2 for i in range(1000000)])
 
 
+def fx_broker_strategy_live(target, freq):
+    broker = bt.brokers.FXBroker()
+    _, _, _ = execute_live(target, freq, TestStrategy, broker=broker)
+
+
+# if __name__ == '__main__':
+#     freq_data = '_5s'
+#
+#     ccy_target = 'USDZAR'
+#     fx_broker_strategy_live(ccy_target, freq_data)
+
+
 if __name__ == '__main__':
     print(datetime.datetime.now())
     config = read_config()
@@ -338,7 +355,7 @@ if __name__ == '__main__':
         end_date = start_date + datetime.timedelta(days=6)
         source = 'HSBC'
     else:
-        start_date = datetime.datetime(2019, 1, 1)
+        start_date = datetime.datetime(2020, 1, 1)
         end_date = datetime.datetime(2020, 5, 1)
         source = 'Histdata'
 
