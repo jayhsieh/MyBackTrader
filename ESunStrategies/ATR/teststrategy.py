@@ -73,7 +73,7 @@ class TestStrategy(bt.Strategy):
                 msg = "賣"
 
             msg += f"單執行: 編號: {order.ref:0>4}, 幣別: {order.data._name}, " \
-                   f"執行價格: {order.executed.price}, 部位大小: {order.executed.size}"
+                   f"執行價格: {order.executed.price}, 部位大小: {order.executed.size:,}"
 
             self.log(msg, doprint=True)
 
@@ -137,17 +137,15 @@ class TestStrategy(bt.Strategy):
 
         if (when.second % self.p.period_len) / self.p.period_len > 0.67:
             return
-        # if when.second % 15:
-        #     return
 
         valid1 = when + datetime.timedelta(seconds=10)
 
         size = self.getposition(self.trade_data).size
-        criteria = abs(size / self.trade_data.close[0] / self.broker.startingcash)
+        criteria = abs(self.broker.getvalue(datas=[self.trade_data]) / self.broker.startingcash)
         if criteria < 0.5:
             buy_price = math.floor(self.index_data.low[-1] * 1.1 * self.p.factor) / self.p.factor
             self.order_buy = self.buy(data=self.trade_data, exectype=bt.Order.Limit,
-                                      price=buy_price, size=1000000, valid=valid1)
+                                      price=buy_price, valid=valid1)
 
             # sell_price = math.ceil(self.index_data.high[-1] * 0.9 * self.p.factor) / self.p.factor
             # self.order_sell = self.sell(data=self.trade_data, exectype=bt.Order.Limit,
@@ -156,9 +154,8 @@ class TestStrategy(bt.Strategy):
             # Close position
             if size != 0:
                 self.log("Close position on next open market price", doprint=True)
-                if size < 0:
-                    self.order_sell = self.sell(data=self.trade_data, exectype=bt.Order.Market,
-                                                size=1000000)
+                is_buy = (size < 0) ^ (self.trade_data._name[:3] == "USD")
+                if is_buy:
+                    self.order_buy = self.buy(data=self.trade_data, exectype=bt.Order.Market)
                 else:
-                    self.order_buy = self.buy(data=self.trade_data, exectype=bt.Order.Market,
-                                              size=1000000)
+                    self.order_sell = self.sell(data=self.trade_data, exectype=bt.Order.Market)

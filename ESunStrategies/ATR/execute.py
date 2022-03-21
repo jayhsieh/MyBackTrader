@@ -15,8 +15,6 @@ from multipleTimeframes import Intra15MinutesReverseStrategy
 from stochatic_oscillator_strategy import StochasticOscillatorStrategy
 from backtrader.utils.timeit import *
 from backtrader.utils.db_conn import MyPostgres
-from backtrader_plotting import Bokeh
-from backtrader_plotting.schemes import Tradimo
 
 
 class MySizer(bt.Sizer):
@@ -25,7 +23,7 @@ class MySizer(bt.Sizer):
         self.config.read('settings.ini')
 
     def _getsizing(self, comminfo, cash, data, isbuy):
-        unit = self.config['size']['unit_basic']
+        unit = int(self.config['size']['unit_basic'])
 
         # Find latest data index
         j = -1
@@ -38,7 +36,7 @@ class MySizer(bt.Sizer):
         # else:
         #     size = unit
 
-        cash_max_limit_portion = self.config['size']['size_portion']
+        cash_max_limit_portion = float(self.config['size']['size_portion'])
         size = math.floor(cash * cash_max_limit_portion / data.close[j] / unit) * unit
         return size
 
@@ -146,7 +144,7 @@ def execute_live(target, freq, strategy, sizer=MySizer, broker=None):
     return exec_cerebro(cerebro, slippage, sizer)
 
 
-def execute_multiple_live(targets, freq, strategy, sizer=MySizer):
+def execute_multiple_live(targets, freq, strategy, sizer=MySizer, broker=None):
     cerebro = bt.Cerebro()
 
     slippage = 0
@@ -163,13 +161,20 @@ def execute_multiple_live(targets, freq, strategy, sizer=MySizer):
     for t in targets:
         cerebro.addstrategy(strategy, name=t)
 
+    # broker
+    if broker is not None:
+        cerebro.broker = broker
+
     return exec_cerebro(cerebro, slippage, sizer)
 
 
 def exec_cerebro(cerebro, slippage, sizer):
-    cerebro.broker.setcash(100000.0)
-    cerebro.addsizer(sizer)
-    cerebro.addsizer(bt.sizers.FixedSize, stake=10000)
+    capital = 1000000.0
+    cerebro.broker.setcash(capital)
+    if sizer is None:
+        cerebro.addsizer(bt.sizers.SizerFix, stake=capital)
+    else:
+        cerebro.addsizer(sizer)
     cerebro.broker.set_slippage_perc(perc=slippage, slip_out=True)
 
     # 策略分析模塊
@@ -285,7 +290,12 @@ def single_strategy(target, freq_data, partial_name, start, end, src='Histdata')
 
 def single_strategy_live(target, freq):
     title = target
-    returns, positions, transactions = execute_live(target, freq, Intra15MinutesReverseStrategy)
+    broker = bt.brokers.FXBroker()
+    returns, positions, transactions = execute_live(
+        target, freq, Intra15MinutesReverseStrategy,
+        sizer=None,
+        broker=broker
+    )
     file_name = f'{target}{freq}_live_atr_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
 
@@ -323,7 +333,12 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
 
 def multiple_strategy_live(targets, freq):
     title = f'{len(targets)}CCY'
-    returns, positions, transactions = execute_multiple_live(targets, freq, Intra15MinutesReverseStrategy)
+    broker = bt.brokers.FXBroker()
+    returns, positions, transactions = execute_multiple_live(
+        targets, freq, Intra15MinutesReverseStrategy,
+        sizer=None,
+        broker=broker
+    )
 
     file_name = f'{title}{freq}_live_atr_performance_report.html'
     quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
@@ -336,7 +351,7 @@ def wastetime():
 
 def fx_broker_strategy_live(target, freq):
     broker = bt.brokers.FXBroker()
-    _, _, _ = execute_live(target, freq, TestStrategy, broker=broker)
+    _, _, _ = execute_live(target, freq, TestStrategy, sizer=None, broker=broker)
 
 
 # if __name__ == '__main__':
