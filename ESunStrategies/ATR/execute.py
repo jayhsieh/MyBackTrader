@@ -135,6 +135,26 @@ def execute_live(target, freq, strategy, sizer=MySizer):
     return exec_cerebro(cerebro, slippage, sizer)
 
 
+def execute_multiple_live(targets, freq, strategy, sizer=MySizer):
+    cerebro = bt.Cerebro()
+
+    slippage = 0
+    for t in targets:
+        slippage = max(slippage, get_settings4tag(t, 'slippage'))
+
+    # data
+    for t in targets:
+        data, args0 = get_data_live(t, freq)
+        cerebro.adddata(data, name=t)
+        cerebro.resampledata(data, **args0, name=t + freq)
+
+    # strategy
+    for t in targets:
+        cerebro.addstrategy(strategy, name=t)
+
+    return exec_cerebro(cerebro, slippage, sizer)
+
+
 def exec_cerebro(cerebro, slippage, sizer):
     cerebro.broker.setcash(10000.0)
     cerebro.addsizer(sizer)
@@ -290,6 +310,19 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
 
 
+def multiple_strategy_live(targets, freq):
+    title = f'{len(targets)}CCY'
+    returns, positions, transactions = execute_multiple_live(targets, freq, Intra15MinutesReverseStrategy)
+
+    file_name = f'{title}{freq}_live_atr_performance_report.html'
+    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
+
+
+@measuretime
+def wastetime():
+    sum([i ** 2 for i in range(1000000)])
+
+
 if __name__ == '__main__':
     print(datetime.datetime.now())
     config = read_config()
@@ -299,7 +332,7 @@ if __name__ == '__main__':
         end_date = start_date + datetime.timedelta(days=6)
         source = 'HSBC'
     else:
-        start_date = datetime.datetime(2020, 2, 1)
+        start_date = datetime.datetime(2019, 1, 1)
         end_date = datetime.datetime(2020, 5, 1)
         source = 'Histdata'
 
@@ -326,8 +359,3 @@ if __name__ == '__main__':
     # single_strategy_live(ccy_target, '_15m')
 
     sys.exit(0)
-
-
-@measuretime
-def wastetime():
-    sum([i ** 2 for i in range(1000000)])
