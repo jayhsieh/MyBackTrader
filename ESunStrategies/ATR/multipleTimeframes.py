@@ -55,7 +55,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
     def log(self, txt, dt=None, doprint=False):
         if doprint:
             dt = dt or max(d.datetime.datetime() for d in self.datas if len(d) > 0)
-            print('\r%s, %s' % (dt.isoformat(), txt))
+            print(f'\r{dt.isoformat()}, {txt}')
 
     @staticmethod
     def get_factor(target):
@@ -74,46 +74,46 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             ord_type = order.OrdTypes[order.ordtype]
             exec_type = order.ExecTypes[order.exectype]
 
-            msg = f'下單紀錄: 編號: {order.ref:0>4}, 幣別: {order.data._name}, ' \
-                  f'買賣: {ord_type: <4}, 類型: {exec_type}'
+            msg = f'Order Record: Ref: {order.ref:0>4}, Currency: {order.data._name}, ' \
+                  f'Type: {ord_type: <4}, Execute Type: {exec_type}'
 
             if order.exectype in [order.Market]:
-                msg += f', 數量: {order.p.size:,}'
+                msg += f', Amount: {order.p.size:,}'
             elif order.exectype in [order.Limit]:
                 deadline = bt.num2date(order.valid)
-                msg += f', 限價價格: {order.price:.5f}, ' \
-                       f'數量: {order.p.size:,}, 期限； {deadline}'
+                msg += f', Limit Price: {order.price:.5f}, ' \
+                       f'Amount: {order.p.size:,}, Deadline: {deadline}'
             elif order.exectype in [order.StopLimit]:
                 deadline = bt.num2date(order.valid)
-                msg += f', 限價價格: {order.plimit:.5f}, '
+                msg += f', Limit Price: {order.plimit:.5f}, '
                 if order.price is not None:
-                    msg += f'啟動價格: {order.price:.5f}, '
-                msg += f'數量: {order.p.size:,}, 期限； {deadline}'
+                    msg += f'Init Price: {order.price:.5f}, '
+                msg += f'Amount: {order.p.size:,}, Deadline: {deadline}'
 
             self.log(msg, doprint=True)
 
         elif order.status in [order.Completed]:
             if order.exectype in [order.StopTrail, order.StopTrailLimit]:
-                print('執行停損單')
+                print('Execute stop order')
                 return
 
-            msg = ''
+            msg = 'Order Executed: '
             tr = None
             if order.isbuy():
                 val = -order.executed.size * order.executed.price
                 tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
                                   columns=self.transaction.columns,
                                   index=[self.trade_data.datetime.datetime(0)])
-                msg = "買"
+                msg += "Buy "
             elif order.issell():
                 val = -order.executed.size * order.executed.price
                 tr = pd.DataFrame([[order.executed.size, order.executed.price, val, float('nan')]],
                                   columns=self.transaction.columns,
                                   index=[self.trade_data.datetime.datetime(0)])
-                msg = "賣"
+                msg += "Sell "
 
-            msg += f"單執行: 編號: {order.ref:0>4}, 幣別: {order.data._name}, " \
-                   f"執行價格: {order.executed.price}, 部位大小: {order.executed.size:,}"
+            msg += f"Order: Ref: {order.ref:0>4}, Currency: {order.data._name}, " \
+                   f"Executed Price: {order.executed.price}, Size: {order.executed.size:,}"
             if order.exectype == 4 and isinstance(order.price, float):
                 atr = abs(order.price - order.plimit) / (self.p.limit - self.p.trigger)
                 msg = msg + ", ATR: {}".format(atr)
@@ -123,14 +123,14 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             self.transaction = self.transaction.append(tr)
 
         elif order.status in [order.Canceled]:
-            self.log(f"Order Canceled: 編號: {order.ref:0>4}, 限價價格: {order.plimit}", doprint=True)
+            self.log(f"Order Canceled: Ref: {order.ref:0>4}, Limit Price: {order.plimit}", doprint=True)
 
     def notify_trade(self, trade):
         if not trade.isclosed:
             return
 
-        self.log(f'交易紀錄: 幣別: {self.name}, 毛利：{trade.pnl:,.2f}, 淨利: {trade.pnlcomm:,.2f}, '
-                 f'市值: {self.broker.getvalue():,.2f}',
+        self.log(f'Trade Record: Currency: {self.name}, P&L: {trade.pnl:,.2f}, Net P&L: {trade.pnlcomm:,.2f}, '
+                 f'Market Value: {self.broker.getvalue():,.2f}',
                  doprint=True)
         self.log('===========================================================================', doprint=True)
 
