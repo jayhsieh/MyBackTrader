@@ -1211,7 +1211,7 @@ class Cerebro(with_metaclass(MetaParams, object)):
         for stratcls, sargs, skwargs in iterstrat:
             sargs = self.datas + list(sargs)
             try:
-                strat = stratcls(*sargs, **skwargs)
+                strat = stratcls(*sargs, **skwargs) # go into strategy class
             except bt.errors.StrategySkipError:
                 continue  # do not add strategy to the mix
 
@@ -1287,7 +1287,7 @@ class Cerebro(with_metaclass(MetaParams, object)):
                 if self.p.oldsync:
                     self._runonce_old(runstrats)
                 else:
-                    self._runonce(runstrats)
+                    self._runonce(runstrats)    # go into your strategy's def next()
             else:
                 if self.p.oldsync:
                     self._runnext_old(runstrats)

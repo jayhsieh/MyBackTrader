@@ -7,7 +7,9 @@ import configparser
 
 class Intra15MinutesReverseStrategy(bt.Strategy):
     params = dict(
-        last_sec=-1,
+        last_min=-1,
+        last_day=-1,
+        is_new_day=False,
         # order parameters
         trigger=2,
         limit=5,
@@ -46,9 +48,9 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             self._print_ccy.append(c[:6])
 
         # End date of strategy
-        today = datetime.datetime.today()
-        self.end_date = today + datetime.timedelta(days=6 - today.weekday())
-        self.end_date = datetime.datetime.combine(self.end_date, datetime.datetime.min.time())
+        # today = datetime.datetime.today()
+        # self.end_date = today + datetime.timedelta(days=6 - today.weekday())
+        # self.end_date = datetime.datetime.combine(self.end_date, datetime.datetime.min.time())
 
         # self.end_date = datetime.datetime.now() + datetime.timedelta(minutes=4)
 
@@ -74,7 +76,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             ord_type = order.OrdTypes[order.ordtype]
             exec_type = order.ExecTypes[order.exectype]
 
-            msg = f'Order Record: Ref: {order.ref:0>4}, Currency: {order.data._name}, ' \
+            msg = f'Order Record: Ref: {order.ref:0>4}, Ccy: {order.data._name}, ' \
                   f'Type: {ord_type: <4}, Execute Type: {exec_type}'
 
             if order.exectype in [order.Market]:
@@ -112,11 +114,11 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
                                   index=[self.trade_data.datetime.datetime(0)])
                 msg += "Sell "
 
-            msg += f"Order: Ref: {order.ref:0>4}, Currency: {order.data._name}, " \
-                   f"Executed Price: {order.executed.price}, Size: {order.executed.size:,}"
+            msg += f"Order: Ref: {order.ref:0>4}, Ccy: {order.data._name}, " \
+                   f"Exec Price: {round(order.executed.price, 8)}, Size: {order.executed.size:,.2f}"
             if order.exectype == 4 and isinstance(order.price, float):
                 atr = abs(order.price - order.plimit) / (self.p.limit - self.p.trigger)
-                msg = msg + ", ATR: {}".format(atr)
+                msg += f", ATR: {atr:>6f}"
                 tr.loc[self.trade_data.datetime.datetime(0), 'atr'] = atr
 
             self.log(msg, doprint=True)
@@ -129,7 +131,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        self.log(f'Trade Record: Currency: {self.name}, P&L: {trade.pnl:,.2f}, Net P&L: {trade.pnlcomm:,.2f}, '
+        self.log(f'Trade Record: Ccy: {self.name}, P&L: {trade.pnl:,.2f}, Net P&L: {trade.pnlcomm:,.2f}, '
                  f'Market Value: {self.broker.getvalue():,.2f}',
                  doprint=True)
         self.log('===========================================================================', doprint=True)
@@ -146,16 +148,18 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         # Set order for the first time in second
         dt = max(d.datetime.datetime() for d in self.datas if len(d) > 0)
 
-        if dt.second != self.p.last_sec:
+        # TODO: something wrong here, it always false except the first in the loop
+        if dt.minute != self.p.last_min:
             dt = dt.replace(microsecond=0)
+            dt = dt.replace(second=0)
 
             # self._print_position(dt)
 
             self._order(dt)
-            self.p.last_sec = dt.second
+            self.p.last_min = dt.minute
 
-            if dt > self.end_date:
-                self.cerebro.runstop()
+            # if dt > self.end_date:
+            #     self.cerebro.runstop()
 
     def _print_data(self):
         """
@@ -195,13 +199,41 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         # if when.second:
         #     return
 
+        # Skip for the first atr value
+        if math.isnan(self.atr[-1]):
+            return
+
         size = self.getposition(self.trade_data).size
         criteria = abs(self.broker.getvalue(datas=[self.trade_data]) / self.broker.startingcash)
+        is_buy = (size < 0) ^ (self.name[:3] == "USD")
 
-        if when.second % 15 == 10:
+        # Stop trading and clean position in the last 30 minutes
+        if (when.hour == 23) and (when.minute >= 30):
+            if when.day != self.p.last_day:
+                self.p.last_day = when.day
+                self.p.is_new_day = True
+                if abs(size) > 0:
+                    ccy = self.name.replace("USD", "")
+                    self.log(f"Clean all position at day end: {size:,.2f} {ccy}", doprint=True)
+                    if size < 0:
+                        self.order_buy = self.buy(data=self.trade_data, exectype=bt.Order.Market,
+                                                  size=abs(size), nccy=ccy)
+                    else:
+                        self.order_sell = self.sell(data=self.trade_data, exectype=bt.Order.Market,
+                                                    size=abs(size), nccy=ccy)
+            return
+        elif (when.hour == 0) and (when.minute < 30):
+            if self.p.is_new_day:
+                self.p.is_new_day = False
+                if len(self._trades[self.trade_data][0]):
+                    self._trades[self.trade_data][0].pop()
+                    self.log('===========================================================================',
+                             doprint=True)
+            return
+
+        if when.minute % 15 == 10:
             # For the last 5 min, create close order for outstanding position
-            valid2 = when + datetime.timedelta(seconds=5)
-            is_buy = (size < 0) ^ (self.name[:3] == "USD")
+            valid2 = when + datetime.timedelta(minutes=5)
 
             if criteria < 0.5:
                 return
@@ -213,15 +245,11 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
                 self.order_buy_close = self.sell(data=self.trade_data, exectype=bt.Order.StopLimit,
                                                  plimit=self.order_buy_close.plimit, valid=valid2)
             return
-        elif when.second % 15:
+        elif when.minute % 15:
             return
 
-        valid1 = when + datetime.timedelta(seconds=10)
+        valid1 = when + datetime.timedelta(minutes=10)
         if criteria < 0.5:
-            # Skip for the first atr value
-            if math.isnan(self.atr[-1]):
-                return
-
             # 賺取向下偏離過多的reversion
             buy_trigger_price = math.floor(
                 (self.index_data.low[-1] - self.p.trigger * self.atr[-1]) / self.p.factor) * self.p.factor
@@ -247,16 +275,15 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             if size != 0:
                 if size > 0:
                     self.log(
-                        "Did not touch buy trigger price: {}".format(self.order_buy_close.plimit),
+                        f"Did not touch buy trigger price: {round(self.order_buy_close.plimit, 8)}",
                         doprint=True)
                 elif size < 0:
                     self.log(
-                        "Did not touch sell trigger price: {}".format(self.order_sell_close.plimit),
+                        f"Did not touch sell trigger price: {round(self.order_sell_close.plimit, 8)}",
                         doprint=True)
 
                 self.log("Close position on next open market price", doprint=True)
 
-                is_buy = (size < 0) ^ (self.name[:3] == "USD")
                 if is_buy:
                     self.order_buy = self.buy(data=self.trade_data, exectype=bt.Order.Market)
                 else:

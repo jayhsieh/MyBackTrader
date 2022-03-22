@@ -14,6 +14,7 @@ from ATR.multipleTimeframes import Intra15MinutesReverseStrategy
 from ATR.stochatic_oscillator_strategy import StochasticOscillatorStrategy
 from backtrader.utils.timeit import *
 from backtrader.utils.db_conn import MyPostgres
+from backtrader.utils.py3 import iteritems
 
 
 class MySizer(bt.Sizer):
@@ -171,8 +172,7 @@ def execute_multiple_live(targets, freq, strategy, sizer=MySizer, broker=None):
     return exec_cerebro(cerebro, slippage, sizer)
 
 
-def exec_cerebro(cerebro, slippage, sizer):
-    capital = 1000000.0
+def exec_cerebro(cerebro, slippage, sizer, capital=1000000.0):
     cerebro.broker.setcash(capital)
     if sizer is None:
         cerebro.addsizer(bt.sizers.SizerFix, stake=capital)
@@ -268,69 +268,74 @@ def analyze_multi_result(strat_name, results):
     )
 
 
-def analyze_transaction(trans):
+def analyze_transaction(trans, capital=1000000):
+    # use fully transaction
+    # TODO: I don't know what does this mean
+    # trans_full = trans[round(abs(trans['amount']), 2) == capital]
+    trans_full = trans
+
+    # return if no transaction
+    if len(trans_full) == 0:
+        return
+
     # classify data
     payoff_list = [[], [], [], [], []]
-    if 'atr' in list(trans):
-        payoff = pd.DataFrame(
-            columns=['value', 'in_price', 'out_price', 'amount', 'atr', 'is_long', 'is_win', 'is_strategy'])
-    else:
-        payoff = pd.DataFrame(
-            columns=['value', 'in_price', 'out_price', 'amount', 'is_long', 'is_win', 'is_strategy'])
+    payoff = pd.DataFrame(
+        columns=['value', 'in_price', 'out_price', 'amount',
+                 'is_long', 'is_win', 'is_strategy'])
 
-    for i in range(len(trans)):
+    for i in range(len(trans_full)):
         if not i % 2:
             continue
 
-        p = trans['value'][i] + trans['value'][i - 1]
+        r0 = trans_full.iloc[i]
+        r1 = trans_full.iloc[i - 1]
+        p = trans_full['value'][i] + trans_full['value'][i - 1]
         payoff_list[0].append(p)  # all
 
-        if 'atr' in list(trans):
-            pa = pd.DataFrame(
-                [[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]), trans['atr'][i - 1],
-                  trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
-                columns=payoff.columns, index=[trans.index[i]])
-        else:
-            pa = pd.DataFrame(
-                [[p, trans['price'][i - 1], trans['price'][i], abs(trans['amount'][i]),
-                  trans['amount'][i - 1] > 0, p > 0, trans.index[i].minute % 15 != 1]],
-                columns=payoff.columns, index=[trans.index[i]])
-
+        pa = pd.DataFrame([[p, r1['price'], r0['price'], abs(r0['amount']),
+                            r1['amount'] > 0, p > 0, r0.name.minute % 15 != 1]],
+                          columns=payoff.columns, index=[r0.name])
         payoff = payoff.append(pa)
-
         if p > 0:
             payoff_list[1].append(p)  # positive
         else:
             payoff_list[2].append(p)  # negative
 
-        if trans.index[i].minute % 15 == 1:
+        if r0.name.minute % 15 == 1:
             payoff_list[4].append(p)  # clean
         else:
             payoff_list[3].append(p)  # strategy
 
     # statistics
-    col = ['All', 'Positive', 'Negative', 'Strategy', 'Clean']
+    col = ['All', 'Profit', 'Loss', 'StrategyOut', 'CleanOut']
     idx = ['count', 'sum', 'mean', 'median', 'std', 'std_r', 'pvalue']
     summary = pd.DataFrame(columns=col, index=idx)
     for i in range(len(payoff_list)):
         cnt = len(payoff_list[i])
         summary[col[i]]['count'] = cnt
-        summary[col[i]]['sum'] = sum(payoff_list[i])
-        summary[col[i]]['mean'] = np.mean(payoff_list[i])
+
+        # skip for nothing
+        if cnt == 0:
+            continue
+
+        summary[col[i]]['sum'] = round(sum(payoff_list[i]), 2)
+        summary[col[i]]['mean'] = round(np.mean(payoff_list[i]), 2)
 
         # skip for only one sample
         if cnt < 2:
             continue
 
-        summary[col[i]]['median'] = np.median(payoff_list[i])
-        summary[col[i]]['std'] = np.std(payoff_list[i])
-        summary[col[i]]['std_r'] = stats.iqr(payoff_list[i], scale='normal')
+        summary[col[i]]['median'] = round(np.median(payoff_list[i]), 2)
+        summary[col[i]]['std'] = round(np.std(payoff_list[i]), 2)
+        summary[col[i]]['std_r'] = round(stats.iqr(payoff_list[i], scale='normal'), 2)
         if col[i] == 'Negative':
-            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff_list[i], 0, alternative='less').pvalue
+            summary[col[i]]['pvalue'] = round(stats.ttest_1samp(payoff_list[i], 0, alternative='less').pvalue, 6)
         else:
-            summary[col[i]]['pvalue'] = stats.ttest_1samp(payoff_list[i], 0, alternative='greater').pvalue
+            summary[col[i]]['pvalue'] = round(stats.ttest_1samp(payoff_list[i], 0, alternative='greater').pvalue, 6)
 
-    print(summary)
+    print(f'\r' + summary.to_string())
+
     return payoff
 
 
@@ -342,6 +347,42 @@ def get_title(targets):
         else:
             title += ' + ' + t
     return title
+
+
+def get_pf_items(stats):
+    # Returns
+    cols = ['index', 'return']
+    returns = pd.DataFrame.from_records(iteritems(stats.rets['returns']),
+                                        index=cols[0], columns=cols)
+    returns.index = pd.to_datetime(returns.index)
+    returns.index = returns.index.tz_localize('UTC')
+    rets = returns['return']
+
+    # Positions
+    pss = stats.rets['positions']
+    ps = [[k] + v for k, v in iteritems(pss)]
+    cols = ps.pop(0)  # headers are in the first entry
+    positions = pd.DataFrame.from_records(ps, index=cols[0], columns=cols)
+    positions.index = pd.to_datetime(positions.index)
+    positions.index = positions.index.tz_localize('UTC')
+
+    # Transactions
+    txss = stats.rets['transactions']
+    txs = list()
+    # The transactions have a common key (date) and can potentially happend
+    # for several assets. The dictionary has a single key and a list of
+    # lists. Each sublist contains the fields of a transaction
+    # Hence the double loop to undo the list indirection
+    for k, v in iteritems(txss):
+        for v2 in v:
+            txs.append([k] + v2)
+
+    cols = txs.pop(0)  # headers are in the first entry
+    transactions = pd.DataFrame.from_records(txs, index=cols[0], columns=cols)
+    transactions.index = pd.to_datetime(transactions.index)
+    transactions.index = transactions.index.tz_localize('UTC')
+
+    return rets, positions, transactions
 
 
 def analyze_result(results, title, partial_name):
@@ -466,45 +507,53 @@ freq_dict = {
 # -----------------------------------------------------
 
 
+def run_live():
+    cerebro = bt.Cerebro()
+
+    # slippage
+    slippage = 0
+    # slippage = max([get_slippage(t) for t in targets])
+
+    broker = bt.brokers.FXBroker()
+    cerebro.broker = broker
+
+    # Add strategy
+    for strat in strat_list:
+        targets = target_dict[strat]
+        freq = freq_dict[strat]
+        strategy = strat_dict[strat]
+        execute_live(cerebro, targets, freq, strategy)
+
+    res = exec_cerebro(cerebro, slippage, None)
+    analyze_result(res)
+
+
+def run_test():
+    print(datetime.datetime.now())
+    config = read_config()
+    if int(config['control']['isWeek']):
+        today = datetime.datetime.today().date()
+        start_date = today - datetime.timedelta(days=today.weekday() + 1 + 7)
+        end_date = start_date + datetime.timedelta(days=6)
+        source = 'HSBC'
+    else:
+        start_date = datetime.datetime(2021, 1, 1)
+        end_date = datetime.datetime(2021, 5, 1)
+        source = 'Histdata'
+
+    freq_list = ['_1m', '_15m']
+
+    ccy_target = 'GBPUSD'
+    single_strategy(ccy_target, freq_list, start_date, end_date)
+    # TODO: live data does not test yet
+    # single_strategy_live(ccy_target, '_15m')
+
+
 if __name__ == "__main__":
     if is_live:
-        cerebro = bt.Cerebro()
-
-        # slippage
-        slippage = 0
-        # slippage = max([get_slippage(t) for t in targets])
-
-        broker = bt.brokers.FXBroker()
-        cerebro.broker = broker
-
-        # Add strategy
-        for strat in strat_list:
-            targets = target_dict[strat]
-            freq = freq_dict[strat]
-            strategy = strat_dict[strat]
-            execute_live(cerebro, targets, freq, strategy)
-
-        res = exec_cerebro(cerebro, slippage, None)
-        analyze_result(res)
+        run_live()
     else:
-        print(datetime.datetime.now())
-        config = read_config()
-        if int(config['control']['isWeek']):
-            today = datetime.datetime.today().date()
-            start_date = today - datetime.timedelta(days=today.weekday() + 1 + 7)
-            end_date = start_date + datetime.timedelta(days=6)
-            source = 'HSBC'
-        else:
-            start_date = datetime.datetime(2021, 1, 1)
-            end_date = datetime.datetime(2021, 5, 1)
-            source = 'Histdata'
-
-        freq_list = ['_1m', '_15m']
-
-        ccy_target = 'GBPUSD'
-        single_strategy(ccy_target, freq_list, start_date, end_date)
-        # TODO: live data does not test yet
-        # single_strategy_live(ccy_target, '_15m')
+        run_test()
 
     sys.exit(0)
 
