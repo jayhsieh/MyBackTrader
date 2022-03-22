@@ -55,7 +55,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
     def log(self, txt, dt=None, doprint=False):
         if doprint:
             dt = dt or max(d.datetime.datetime() for d in self.datas if len(d) > 0)
-            print('%s, %s' % (dt.isoformat(), txt))
+            print('\r%s, %s' % (dt.isoformat(), txt))
 
     @staticmethod
     def get_factor(target):
@@ -90,7 +90,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
                     msg += f'啟動價格: {order.price:.5f}, '
                 msg += f'數量: {order.p.size:,}, 期限； {deadline}'
 
-            # self.log(msg, doprint=True)
+            self.log(msg, doprint=True)
 
         elif order.status in [order.Completed]:
             if order.exectype in [order.StopTrail, order.StopTrailLimit]:
@@ -141,7 +141,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
     #     self._print_data()
 
     def next(self):
-        # self._print_data()
+        self._print_data()
 
         # Set order for the first time in second
         dt = max(d.datetime.datetime() for d in self.datas if len(d) > 0)

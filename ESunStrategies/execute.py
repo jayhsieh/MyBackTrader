@@ -10,8 +10,8 @@ import numpy as np
 from scipy import stats
 
 from ESunStrategies.ATR.teststrategy import TestStrategy
-from multipleTimeframes import Intra15MinutesReverseStrategy
-from stochatic_oscillator_strategy import StochasticOscillatorStrategy
+from ATR.multipleTimeframes import Intra15MinutesReverseStrategy
+from ATR.stochatic_oscillator_strategy import StochasticOscillatorStrategy
 from backtrader.utils.timeit import *
 from backtrader.utils.db_conn import MyPostgres
 
@@ -224,7 +224,7 @@ def analyze_single_result(strategy):
     file_name = f'{title}_{strategy.name}_live.html'
     quantstats.reports.html(
         returns,
-        output=os.path.join(os.getcwd(), '../output\\', file_name),
+        output=os.path.join(os.getcwd(), 'output\\', file_name),
         title=title
     )
 
@@ -263,7 +263,7 @@ def analyze_multi_result(strat_name, results):
 
     quantstats.reports.html(
         returns['cash'],
-        output=os.path.join(os.getcwd(), '../output\\', file_name),
+        output=os.path.join(os.getcwd(), 'output\\', file_name),
         title=title
     )
 
@@ -356,7 +356,7 @@ def analyze_result(results, title, partial_name):
         _ = analyze_transaction(strat.transaction)
 
         file_name = f'{title}{partial_name}_atr_performance_report.html'
-        quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
+        quantstats.reports.html(returns, output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
 
 def single_strategy(target, freq_data, start, end, src='Histdata'):
@@ -403,7 +403,7 @@ def multiple_strategy(targets, freq_data, start, end, src='Histdata'):
     else:
         file_name = f'{str(len(targets))}CCY{freq_data[0]}{freq_data[1]}_reversion_performance.html'
 
-    quantstats.reports.html(returns['cash'], output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
+    quantstats.reports.html(returns['cash'], output=os.path.join(os.getcwd(), 'output\\', file_name), title=title)
 
     date_diff = pd.DataFrame(positions.index).diff()
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
@@ -495,7 +495,7 @@ if __name__ == "__main__":
             end_date = start_date + datetime.timedelta(days=6)
             source = 'HSBC'
         else:
-            start_date = datetime.datetime(2020, 1, 1)
+            start_date = datetime.datetime(2021, 1, 1)
             end_date = datetime.datetime(2021, 5, 1)
             source = 'Histdata'
 
