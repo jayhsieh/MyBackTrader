@@ -50,7 +50,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         self.end_date = today + datetime.timedelta(days=6 - today.weekday())
         self.end_date = datetime.datetime.combine(self.end_date, datetime.datetime.min.time())
 
-        self.end_date = datetime.datetime.now() + datetime.timedelta(minutes=4)
+        # self.end_date = datetime.datetime.now() + datetime.timedelta(minutes=4)
 
     def log(self, txt, dt=None, doprint=False):
         if doprint:
