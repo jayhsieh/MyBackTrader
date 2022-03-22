@@ -35,7 +35,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
         # order parameters
         self.config = configparser.ConfigParser()
-        self.p.factor = 0.0001 * int(self.config['factor'][name])
+        self.p.factor = 0.00001 * int(self.config['factor'][name])
 
         self.transaction = pd.DataFrame(columns=['amount', 'price', 'value', 'atr'])
 
@@ -45,6 +45,10 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
             if c[:6] in self._print_ccy:
                 continue
             self._print_ccy.append(c[:6])
+
+        today = datetime.datetime.today()
+        self.end_date = today + datetime.timedelta(days=6 - today.weekday())
+        self.end_date = datetime.datetime.combine(self.end_date, datetime.datetime.min.time())
 
     def log(self, txt, dt=None, doprint=False):
         if doprint:
@@ -75,7 +79,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
                     msg += f'啟動價格: {order.price:.5f}, '
                 msg += f'數量: {order.p.size:,}, 期限； {deadline}'
 
-            self.log(msg, doprint=True)
+            # self.log(msg, doprint=True)
 
         elif order.status in [order.Completed]:
             if order.exectype in [order.StopTrail, order.StopTrailLimit]:
@@ -115,7 +119,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        self.log(f'交易紀錄: 毛利：{trade.pnl:,.2f}, 淨利: {trade.pnlcomm:,.2f}, '
+        self.log(f'交易紀錄: 幣別: {self.name}, 毛利：{trade.pnl:,.2f}, 淨利: {trade.pnlcomm:,.2f}, '
                  f'市值: {self.broker.getvalue():,.2f}',
                  doprint=True)
         self.log('===========================================================================', doprint=True)
@@ -136,10 +140,13 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         if dt.second != self.p.last_sec:
             dt = dt.replace(microsecond=0)
 
-            self._print_position(dt)
+            # self._print_position(dt)
 
             self._order(dt)
             self.p.last_sec = dt.second
+
+            if dt > self.end_date:
+                self.cerebro.runstop()
 
     def _print_data(self):
         """

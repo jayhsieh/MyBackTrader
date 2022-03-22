@@ -30,12 +30,6 @@ class MySizer(bt.Sizer):
         while math.isnan(data.close[j]):
             j -= 1
 
-        # name = data._name
-        # if name.StartWith('USD'):
-        #     size = math.floor(cash * size_portion / data.close[j] / unit) * unit
-        # else:
-        #     size = unit
-
         cash_max_limit_portion = float(self.config['size']['size_portion'])
         size = math.floor(cash * cash_max_limit_portion / data.close[j] / unit) * unit
         return size
@@ -123,27 +117,6 @@ def execute_history(target, freq_data, partial_name, start, end, strategy, sizer
     return exec_cerebro(cerebro, slippage, sizer)
 
 
-def execute_live(target, freq, strategy, sizer=MySizer, broker=None):
-    cerebro = bt.Cerebro()
-
-    # slippage
-    slippage = get_settings4tag(target, 'slippage')
-
-    # data
-    data, args0 = get_data_live(target, freq)
-    cerebro.adddata(data, name=target)
-    cerebro.resampledata(data, **args0, name=target + '_5s')
-
-    # strategy
-    cerebro.addstrategy(strategy)
-
-    # broker
-    if broker is not None:
-        cerebro.broker = broker
-
-    return exec_cerebro(cerebro, slippage, sizer)
-
-
 def execute_multiple_live(targets, freq, strategy, sizer=MySizer, broker=None):
     cerebro = bt.Cerebro()
 
@@ -153,9 +126,12 @@ def execute_multiple_live(targets, freq, strategy, sizer=MySizer, broker=None):
 
     # data
     for t in targets:
+        data_name = [d._name for d in cerebro.datas]
         data, args0 = get_data_live(t, freq)
-        cerebro.adddata(data, name=t)
-        cerebro.resampledata(data, **args0, name=t + freq)
+        if t not in data_name:
+            cerebro.adddata(data, name=t)
+        if t + freq not in data_name:
+            cerebro.resampledata(data, **args0, name=t + freq)
 
     # strategy
     for t in targets:
@@ -190,18 +166,7 @@ def exec_cerebro(cerebro, slippage, sizer):
     cerebro.addobserver(bt.observers.Trades)
 
     results = cerebro.run(stdstats=True)
-    strat = results[0]
-    portfolio_stats = strat.analyzers.getbyname('pyfolio')
-    exe_ret, exe_pos, transactions, gross_lev = portfolio_stats.get_pf_items()
-    exe_ret.index = exe_ret.index.tz_convert(None)
-
-    # b = Bokeh(style='bar', scheme=Tradimo(), file_name=target + partial_name + '.html')
-    # b.params.filename = './output/' + target + partial_name + '_figure.html'
-    # cerebro.plot(b)
-
-    trans = analyze_transaction(strat.transaction)
-
-    return exe_ret, exe_pos, trans
+    return results
 
 
 def analyze_transaction(trans):
@@ -246,8 +211,8 @@ def analyze_transaction(trans):
 
     # statistics
     col = ['All', 'Positive', 'Negative', 'Strategy', 'Clean']
-    summary = pd.DataFrame(columns=col,
-                           index=['count', 'sum', 'mean', 'median', 'std', 'std_r', 'pvalue'])
+    idx = ['count', 'sum', 'mean', 'median', 'std', 'std_r', 'pvalue']
+    summary = pd.DataFrame(columns=col, index=idx)
     for i in range(len(payoff_list)):
         cnt = len(payoff_list[i])
         summary[col[i]]['count'] = cnt
@@ -280,24 +245,27 @@ def get_title(targets):
     return title
 
 
+def analyze_result(results, title, partial_name):
+    for strat in results:
+        portfolio_stats = strat.analyzers.getbyname('pyfolio')
+        returns, _, _, _ = portfolio_stats.get_pf_items()
+        returns.index = returns.index.tz_convert(None)
+
+        if len(strat.transaction) == 0:
+            continue
+
+        _ = analyze_transaction(strat.transaction)
+
+        file_name = f'{title}{partial_name}_atr_performance_report.html'
+        quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
+
+
 def single_strategy(target, freq_data, partial_name, start, end, src='Histdata'):
-    title = target
-    returns, positions, transactions = execute_history(target, freq_data, partial_name, start, end,
-                                                       Intra15MinutesReverseStrategy, source=src)
-    file_name = f'{target}{partial_name}_atr_performance_report.html'
-    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
-
-
-def single_strategy_live(target, freq):
-    title = target
-    broker = bt.brokers.FXBroker()
-    returns, positions, transactions = execute_live(
-        target, freq, Intra15MinutesReverseStrategy,
-        sizer=None,
-        broker=broker
-    )
-    file_name = f'{target}{freq}_live_atr_performance_report.html'
-    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
+    results = execute_history(
+        target, freq_data, partial_name, start, end,
+        Intra15MinutesReverseStrategy,
+        source=src)
+    analyze_result(results, "", freq_data[1])
 
 
 def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdata'):
@@ -307,8 +275,19 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
     position = pd.DataFrame()
     for t in targets:
         print(t)
-        _, pos, trans = execute_history(t, freq_data, partial_name, start, end,
-                                        Intra15MinutesReverseStrategy, source=src)
+        results = execute_history(
+            t, freq_data, partial_name, start, end,
+            Intra15MinutesReverseStrategy,
+            source=src
+        )
+        # Gets useful items from results
+        strat = results[0]
+        trans = strat.transaction
+        portfolio_stats = strat.analyzers.getbyname('pyfolio')
+        _, pos, _, _ = portfolio_stats.get_pf_items()
+
+        # Analyze and add performance
+        _ = analyze_transaction(trans)
         positions[t] = pos.sum(axis=1)
         if len(position) == 0:
             position['cash'] = round(positions[t] * config['portfolio_weight'][t], 2)
@@ -331,18 +310,25 @@ def multiple_strategy(targets, freq_data, partial_name, start, end, src='Histdat
     date_diff['Datetime'] /= np.timedelta64(1, 'D')
 
 
+def single_strategy_live(target, freq):
+    broker = bt.brokers.FXBroker()
+    results = execute_multiple_live(
+        [target], freq, Intra15MinutesReverseStrategy,
+        sizer=None,
+        broker=broker
+    )
+    analyze_result(results, "", freq)
+
+
 def multiple_strategy_live(targets, freq):
     title = f'{len(targets)}CCY'
     broker = bt.brokers.FXBroker()
-    returns, positions, transactions = execute_multiple_live(
+    results = execute_multiple_live(
         targets, freq, Intra15MinutesReverseStrategy,
         sizer=None,
         broker=broker
     )
-
-    file_name = f'{title}{freq}_live_atr_performance_report.html'
-    quantstats.reports.html(returns, output=os.path.join(os.getcwd(), '../output\\', file_name), title=title)
-
+    analyze_result(results, title, freq)
 
 @measuretime
 def wastetime():
@@ -351,7 +337,10 @@ def wastetime():
 
 def fx_broker_strategy_live(target, freq):
     broker = bt.brokers.FXBroker()
-    _, _, _ = execute_live(target, freq, TestStrategy, sizer=None, broker=broker)
+    _, _, _ = execute_multiple_live(
+        [target], freq, TestStrategy,
+        sizer=None,
+        broker=broker)
 
 
 # if __name__ == '__main__':
