@@ -405,7 +405,7 @@ def single_strategy(target, freq_data, start, end, src='Histdata'):
         target, freq_data, start, end,
         Intra15MinutesReverseStrategy,
         source=src)
-    analyze_result(results, "", freq_data[1])
+    analyze_result(results, target, freq_data[1])
 
 
 def multiple_strategy(targets, freq_data, start, end, src='Histdata'):
@@ -544,7 +544,7 @@ def run_test():
     freq_list = ['_1m', '_15m']
 
     ccy_target = 'GBPUSD'
-    single_strategy(ccy_target, freq_list, start_date, end_date)
+    single_strategy(ccy_target, freq_list, start_date, end_date, source=source)
     # TODO: live data does not test yet
     # single_strategy_live(ccy_target, '_15m')
 
