@@ -96,7 +96,7 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
 
         elif order.status in [order.Completed]:
             if order.exectype in [order.StopTrail, order.StopTrailLimit]:
-                print('Execute stop order')
+                print('\rExecute stop order')
                 return
 
             msg = 'Order Executed: '
@@ -184,11 +184,11 @@ class Intra15MinutesReverseStrategy(bt.Strategy):
         param dt: Datetime now
         :return:
         """
-        msg = f"{dt} | USD: {self.broker.cash:,.2f} | "
+        msg = f"\r{dt} | USD: {self.broker.cash:,.2f} | "
         for c in self._print_ccy:
             p = self.positionsbyname[c]
             msg += f"{c}: {p.size:,.2f} | "
-        print(msg, end="\r")
+        print(msg)
 
     def _order(self, when):
         """

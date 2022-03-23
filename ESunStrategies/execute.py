@@ -60,7 +60,7 @@ def get_data_df(table_name, target, freq_data, start, end, source):
 def get_data_live(target):
     data_factory = bt.feeds.HSBCData
     ccy = f"{target[:3]}/{target[3:]}"
-    data = data_factory(dataname=ccy)
+    data = data_factory(dataname=ccy, qcheck=0.1)
     return data
 
 
@@ -192,7 +192,9 @@ def exec_cerebro(cerebro, slippage, sizer, capital=1000000.0):
     cerebro.addobserver(bt.observers.DrawDown)
     cerebro.addobserver(bt.observers.Trades)
 
-    results = cerebro.run(stdstats=True)
+    # Reduce memory usage to the minimum period
+    results = cerebro.run(stdstats=True, exactbars=1)
+
     return results
 
 

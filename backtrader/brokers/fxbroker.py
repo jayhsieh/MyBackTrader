@@ -1,5 +1,7 @@
 import datetime
+import queue
 import math
+import numpy as np
 from backtrader.order import Order, BuyOrder, SellOrder
 from .bbroker import BackBroker
 
@@ -28,6 +30,9 @@ class FXBroker(BackBroker):
         super(FXBroker, self).__init__()
 
         self._last_min = -1
+        self.timediff = queue.Queue(50)
+        for i in range(50):
+            self.timediff.put(float('nan'))
 
     def start(self):
         super(FXBroker, self).start()
@@ -388,13 +393,15 @@ class FXBroker(BackBroker):
 
         # Set order for the first time in second
         dt = max(d.datetime.datetime() for d in self.cerebro.datas if len(d) > 0)
-        if dt.minute == self._last_min:
-            return
-
-        dt = dt.replace(microsecond=0)
         self._last_min = dt.minute
 
-        msg = f"\r{datetime.datetime.now()} | {dt} | USD: {self.cash:,.2f} | "
+        # Use queue to monitor latency
+        dt_now = datetime.datetime.now()
+        _ = self.timediff.get()
+        self.timediff.put((dt_now - dt).total_seconds())
+        mean_lag = np.nanmean(self.timediff.queue)
+
+        msg = f"\r{dt_now} | {dt} | {round(mean_lag, 3)} | USD: {self.cash:,.2f} | "
         for c in self._print_ccy:
             p = self.getposition(self.cerebro.datasbyname[c])
             msg += f"{c}: {p.size:,.2f} | "
